@@ -148,6 +148,7 @@ FSNet đề xuất Adaptive Spectral Perception Module (ASPM) để phát hiện
 
 Công thức ASPM:
 $F_{stem} = \Phi_{ASPM}(X) = G_\theta(X) \cdot X$
+
 $G_\theta(X) = \sigma(W_g(\text{AvgPool}(X)))$
 
 #### 2.4.2. InvisMark (arXiv 2411.07795, WACV 2025)
