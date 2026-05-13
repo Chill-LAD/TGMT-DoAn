@@ -173,11 +173,11 @@ python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg --
 
 ## Dataset Summary
 
-| Dataset      | Source       | Type      | Watermark | No Watermark | Total   |
-| ------------ | ------------ | --------- | --------- | ------------ | ------- |
-| CLWD         | Google Drive | Visible   | 70,000    | 70,000       | 140,000 |
-| COCO + DCT   | COCO 2017    | Invisible | 5,000     | 0            | 5,000   |
-| **Combined** | Both         | Both      | 145,000   | 70,000       | 215,000 |
+| Dataset        | Source           | Type      | Watermark | No Watermark | Total   |
+| -------------- | ---------------- | --------- | --------- | ------------ | ------- |
+| CLWD           | arXiv 2012.07616 | Visible   | 70,000    | 70,000       | 140,000 |
+| COCO val + DCT | COCO 2017        | Invisible | 5,000     | 0            | 5,000   |
+| **Combined**   | Both             | Both      | 75,000    | 70,000       | 145,000 |
 
 ## Command Line Arguments
 
