@@ -62,6 +62,7 @@ class FFTPreprocessor:
         fft_image = cv2.resize(fft_image, (self.image_size, self.image_size))
         fft_image = fft_image.astype(np.float32)
         fft_image = np.expand_dims(fft_image, axis=0)
+        fft_image = np.repeat(fft_image, 3, axis=0)
         return torch.from_numpy(fft_image)
 
 
