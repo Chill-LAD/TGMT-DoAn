@@ -1,18 +1,29 @@
+"""
+Baseline model 1: ResNet18 cho phát hiện watermark.
+Mô hình CNN cơ bản chỉ sử dụng RGB input (không có frequency branch).
+"""
 import torch
 import torch.nn as nn
 from torchvision import models
 
 
 class BaselineResNet(nn.Module):
+    """
+    Baseline ResNet18 cho phân loại watermark.
+    Chỉ sử dụng RGB features, không có frequency branch.
+    """
     def __init__(self, num_classes=2, pretrained=True, dropout=0.5):
         super(BaselineResNet, self).__init__()
 
+        # Load pretrained ResNet18 từ ImageNet
         weights = models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
         backbone = models.resnet18(weights=weights)
         self.feature_dim = 512
 
+        # Bỏ lớp FC cuối, chỉ giữ lại feature extractor
         self.features = nn.Sequential(*list(backbone.children())[:-1])
 
+        # Classifier: Flatten -> Dropout -> FC -> ReLU -> Dropout -> FC
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(dropout),
@@ -23,16 +34,22 @@ class BaselineResNet(nn.Module):
         )
 
     def forward(self, x):
+        """Forward pass: feature extraction + classification."""
         features = self.features(x)
         logits = self.classifier(features)
         return logits
 
 
 def create_baseline_resnet(num_classes=2, pretrained=True, dropout=0.5):
+    """Factory function để tạo BaselineResNet model."""
     return BaselineResNet(num_classes=num_classes, pretrained=pretrained, dropout=dropout)
 
 
 class WatermarkDetectorResNet:
+    """
+    Wrapper class để dễ dàng load model và thực hiện inference.
+    Cung cấp method detect() cho việc phát hiện watermark trên ảnh đơn lẻ.
+    """
     def __init__(self, model_path=None, device=None):
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,6 +63,7 @@ class WatermarkDetectorResNet:
             self.load_weights(model_path)
 
     def load_weights(self, path):
+        """Load weights từ checkpoint file."""
         checkpoint = torch.load(path, map_location=self.device)
         if 'model_state_dict' in checkpoint:
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -54,6 +72,14 @@ class WatermarkDetectorResNet:
         print(f"Loaded weights from {path}")
 
     def detect(self, image_path, return_prob=False):
+        """
+        Phát hiện watermark trong ảnh.
+        Args:
+            image_path: Đường dẫn đến ảnh
+            return_prob: Có trả về xác suất của cả 2 lớp không
+        Returns:
+            (label, confidence) hoặc (label, confidence, probabilities)
+        """
         import cv2
         from torchvision import transforms
 
@@ -62,6 +88,7 @@ class WatermarkDetectorResNet:
             raise ValueError(f"Cannot read image: {image_path}")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        # Transform ảnh để phù hợp với model
         transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((224, 224)),

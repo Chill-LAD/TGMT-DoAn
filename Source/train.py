@@ -1,3 +1,7 @@
+"""
+Script huấn luyện mô hình hybrid watermark detection.
+Hỗ trợ huấn luyện trên visible, invisible hoặc combined dataset.
+"""
 import os
 import sys
 import time
@@ -8,11 +12,10 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from config import Config
-from dataset import get_dataloader
-from model import create_model
 
 
 def set_seed(seed):
+    """Đặt seed cho reproducibility."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     import numpy as np
@@ -21,7 +24,45 @@ def set_seed(seed):
     random.seed(seed)
 
 
+def get_dataloaders(visible_train_dir=None, visible_val_dir=None,
+                   invisible_train_dir=None, invisible_val_dir=None,
+                   batch_size=32, num_workers=4, merge=True):
+    """Tạo train và validation dataloaders."""
+    from dual_dataset import get_dual_dataloader
+
+    train_loader = get_dual_dataloader(
+        visible_dir=visible_train_dir,
+        invisible_dir=invisible_train_dir,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        mode="train",
+        merge=merge
+    )
+
+    val_loader = get_dual_dataloader(
+        visible_dir=visible_val_dir,
+        invisible_dir=invisible_val_dir,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        mode="val",
+        merge=merge
+    )
+
+    return train_loader, val_loader
+
+
+def create_model(num_classes=2, backbone="resnet18", pretrained=True, dropout=0.5, use_se_attention=True):
+    """Tạo hybrid model."""
+    from model import create_model
+    return create_model(num_classes=num_classes, backbone=backbone,
+                       pretrained=pretrained, dropout=dropout, use_se_attention=use_se_attention)
+
+
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler=None):
+    """
+    Huấn luyện một epoch.
+    Sử dụng Mixed Precision Training (AMP) nếu có GPU.
+    """
     model.train()
     running_loss = 0.0
     correct = 0
@@ -36,7 +77,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler
         optimizer.zero_grad()
 
         if scaler is not None:
-            with torch.cuda.amp.autocast():
+            # Mixed precision training
+            with torch.amp.autocast('cuda'):
                 outputs = model(rgb, freq)
                 loss = criterion(outputs, labels)
             scaler.scale(loss).backward()
@@ -65,6 +107,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler
 
 
 def validate(model, val_loader, criterion, device):
+    """Đánh giá model trên validation set."""
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -87,35 +130,64 @@ def validate(model, val_loader, criterion, device):
     return running_loss / len(val_loader), 100. * correct / total
 
 
-def train(train_dir, val_dir, num_epochs=30, batch_size=32, lr=1e-4,
-          backbone="resnet18", checkpoint_dir="./checkpoints", resume=None):
+def train(visible_train_dir=None, visible_val_dir=None,
+         invisible_train_dir=None, invisible_val_dir=None,
+         num_epochs=30, batch_size=32, lr=1e-4,
+         backbone="resnet18", checkpoint_dir="./checkpoints", resume=None, merge=True):
+    """
+    Hàm huấn luyện chính.
+    Args:
+        visible_train_dir: Đường dẫn visible watermark training data
+        visible_val_dir: Đường dẫn visible watermark validation data
+        invisible_train_dir: Đường dẫn invisible watermark training data
+        invisible_val_dir: Đường dẫn invisible watermark validation data
+        num_epochs: Số epochs
+        batch_size: Kích thước batch
+        lr: Learning rate
+        backbone: Kiến trúc backbone (resnet18, resnet34, resnet50)
+        checkpoint_dir: Thư mục lưu checkpoint
+        resume: Đường dẫn checkpoint để tiếp tục huấn luyện
+        merge: Có merge visible và invisible datasets không
+    """
     set_seed(Config.seed)
 
     device = torch.device(Config.device)
     print(f"Using device: {device}")
+    print(f"Visible train: {visible_train_dir}")
+    print(f"Invisible train: {invisible_train_dir}")
+    print(f"Merge datasets: {merge}")
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_loader = get_dataloader(train_dir, batch_size=batch_size,
-                                  num_workers=Config.num_workers, mode="train")
-    val_loader = get_dataloader(val_dir, batch_size=batch_size,
-                               num_workers=Config.num_workers, mode="val")
+    # Tạo dataloaders
+    train_loader, val_loader = get_dataloaders(
+        visible_train_dir=visible_train_dir,
+        visible_val_dir=visible_val_dir,
+        invisible_train_dir=invisible_train_dir,
+        invisible_val_dir=invisible_val_dir,
+        batch_size=batch_size,
+        num_workers=Config.num_workers,
+        merge=merge
+    )
 
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
 
+    # Tạo model
     model = create_model(num_classes=2, backbone=backbone,
                         pretrained=True, dropout=0.5, use_se_attention=True)
     model = model.to(device)
 
+    # Loss, optimizer, scheduler
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=Config.weight_decay)
-
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs,
                                                       eta_min=lr/10)
 
-    scaler = torch.cuda.amp.GradScaler() if Config.use_amp and device.type == "cuda" else None
+    # Mixed precision scaler
+    scaler = torch.amp.GradScaler('cuda') if Config.use_amp and device.type == "cuda" else None
 
+    # Resume from checkpoint
     start_epoch = 0
     best_val_acc = 0.0
 
@@ -128,8 +200,10 @@ def train(train_dir, val_dir, num_epochs=30, batch_size=32, lr=1e-4,
         best_val_acc = checkpoint.get('best_val_acc', 0.0)
         print(f"Resumed from epoch {start_epoch}")
 
+    # TensorBoard writer
     writer = SummaryWriter(Config.log_dir)
 
+    # Training loop
     for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc = train_epoch(model, train_loader, criterion,
                                             optimizer, device, epoch, scaler)
@@ -142,12 +216,14 @@ def train(train_dir, val_dir, num_epochs=30, batch_size=32, lr=1e-4,
         print(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
         print(f"  LR: {scheduler.get_last_lr()[0]:.6f}")
 
+        # Log to TensorBoard
         writer.add_scalar("Loss/train", train_loss, epoch)
         writer.add_scalar("Loss/val", val_loss, epoch)
         writer.add_scalar("Acc/train", train_acc, epoch)
         writer.add_scalar("Acc/val", val_acc, epoch)
         writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
 
+        # Save checkpoint
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pth")
         torch.save({
             'epoch': epoch,
@@ -161,6 +237,7 @@ def train(train_dir, val_dir, num_epochs=30, batch_size=32, lr=1e-4,
             'best_val_acc': best_val_acc
         }, checkpoint_path)
 
+        # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_path = os.path.join(checkpoint_dir, "best_model.pth")
@@ -177,12 +254,17 @@ def train(train_dir, val_dir, num_epochs=30, batch_size=32, lr=1e-4,
 
 
 def main():
+    """Entry point cho command line interface."""
     import argparse
     parser = argparse.ArgumentParser(description="Train Watermark Detection Model")
-    parser.add_argument("--train_dir", type=str, default="./data/train",
-                       help="Path to training data")
-    parser.add_argument("--val_dir", type=str, default="./data/val",
-                       help="Path to validation data")
+    parser.add_argument("--visible_train_dir", type=str, default="./data/train",
+                       help="Path to visible watermark training data")
+    parser.add_argument("--visible_val_dir", type=str, default="./data/val",
+                       help="Path to visible watermark validation data")
+    parser.add_argument("--invisible_train_dir", type=str, default="./data_invisible/train",
+                       help="Path to invisible watermark training data")
+    parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible/val",
+                       help="Path to invisible watermark validation data")
     parser.add_argument("--epochs", type=int, default=Config.num_epochs,
                        help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=Config.batch_size,
@@ -190,16 +272,27 @@ def main():
     parser.add_argument("--lr", type=float, default=Config.learning_rate,
                        help="Learning rate")
     parser.add_argument("--backbone", type=str, default="resnet18",
-                       choices=["resnet18", "resnet34", "resnet50", "mobilenet_v3_small"],
+                       choices=["resnet18", "resnet34", "resnet50"],
                        help="Backbone architecture")
     parser.add_argument("--resume", type=str, default=None,
                        help="Resume from checkpoint")
+    parser.add_argument("--no_merge", action="store_true",
+                       help="Don't merge visible and invisible datasets")
 
     args = parser.parse_args()
 
-    train(args.train_dir, args.val_dir, num_epochs=args.epochs,
-          batch_size=args.batch_size, lr=args.lr, backbone=args.backbone,
-          resume=args.resume)
+    merge = not args.no_merge
+
+    train(visible_train_dir=args.visible_train_dir,
+          visible_val_dir=args.visible_val_dir,
+          invisible_train_dir=args.invisible_train_dir,
+          invisible_val_dir=args.invisible_val_dir,
+          num_epochs=args.epochs,
+          batch_size=args.batch_size,
+          lr=args.lr,
+          backbone=args.backbone,
+          resume=args.resume,
+          merge=merge)
 
 
 if __name__ == "__main__":

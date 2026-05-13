@@ -2,25 +2,28 @@
 
 ## Giới thiệu
 
-Mã nguồn cho bài toán phát hiện watermark trong ảnh số sử dụng mô hình hybrid CNN-Frequency.
+Mã nguồn cho bài toán phát hiện watermark trong ảnh số sử dụng mô hình hybrid CNN-Frequency. Hỗ trợ cả visible và invisible watermarks.
 
 ## Cấu trúc thư mục
 
 ```
 Source/
-├── config.py             # Cấu hình hyperparameters
-├── dataset.py            # Dataset class với FFT augmentation
-├── divide_dataset.py     # Script chia dataset CLWD
-├── baseline_resnet.py    # Baseline 1: ResNet18 (RGB only)
-├── baseline_mobilenet.py # Baseline 2: MobileNetV3 (RGB only)
-├── model.py              # Ours v2: Hybrid CNN-Frequency + SE Attention
-├── compare_models.py     # Train & so sánh 4 mô hình
-├── evaluate_all.py       # Đánh giá tất cả các mô hình
-├── train.py              # Script huấn luyện (hybrid model)
-├── evaluate.py           # Script đánh giá (hybrid model)
-├── main.py               # CLI interface
-├── requirements.txt      # Python dependencies
-└── README.md             # File này
+├── config.py                   # Cấu hình hyperparameters
+├── dataset.py                  # Dataset class (visible watermarks)
+├── dual_dataset.py             # Dataset class (visible + invisible)
+├── divide_dataset.py           # Chia dataset CLWD
+├── download_coco.py           # Download COCO 2017 val
+├── create_invisible_dataset.py # Tạo invisible watermark dataset
+├── baseline_resnet.py          # Baseline 1: ResNet18 (RGB only)
+├── baseline_mobilenet.py      # Baseline 2: MobileNetV3 (RGB only)
+├── model.py                    # Ours v2: Hybrid CNN-Frequency + SE Attention
+├── compare_models.py           # Train & so sánh 4 mô hình
+├── evaluate_all.py             # Đánh giá tất cả các mô hình
+├── train.py                    # Script huấn luyện (hybrid model)
+├── evaluate.py                 # Script đánh giá (hybrid model)
+├── main.py                     # CLI interface
+├── requirements.txt            # Python dependencies
+└── README.md                   # File này
 ```
 
 ## Mô hình
@@ -47,111 +50,144 @@ pip install -r requirements.txt
 
 ## Chuẩn bị dữ liệu
 
-### 1. Download CLWD Dataset
-
-Download từ Google Drive: https://drive.google.com/file/d/17y1gkUhIV6rZJg1gMG-gzVMnH27fm4Ij
-
-File: `CLWD.rar` (~3.5GB)
-
-### 2. Extract
-
-Extract vào `Source/data/CLWD/CLWD/` với cấu trúc:
-
-```
-CLWD/
-├── train/
-│   ├── Watermarked_image/    # 60,000 ảnh
-│   └── Watermark_free_image/ # 60,000 ảnh
-└── test/
-    ├── Watermarked_image/     # 10,000 ảnh
-    └── Watermark_free_image/  # 10,000 ảnh
-```
-
-### 3. Chia dataset
+### Dataset 1: Visible Watermark (CLWD)
 
 ```bash
+# 1. Download CLWD từ Google Drive: https://drive.google.com/file/d/17y1gkUhIV6rZJg1gMG-gzVMnH27fm4Ij
+# File: CLWD.rar (~3.5GB)
+
+# 2. Extract vào Source/data/CLWD/CLWD/
+
+# 3. Chia dataset
 python divide_dataset.py
 ```
 
-Dataset structure sau khi chia:
+### Dataset 2: Invisible Watermark (COCO + Synthetic)
+
+```bash
+# 1. Download COCO 2017 val
+python download_coco.py --output_dir ./coco_data
+
+# 2. Tạo invisible watermark dataset (5,000 images, không có no_watermark)
+python create_invisible_dataset.py --coco_dir ./coco_data/val2017 --output_dir ./data_invisible --num_samples 5000
+```
+
+### Dataset Structure
 
 ```
-data/
+data/                           # Visible (CLWD)
 ├── train/
-│   ├── watermark/     # 49,000 ảnh
-│   └── no_watermark/ # 49,000 ảnh
+│   ├── watermark/     # ~49,000 ảnh có watermark
+│   └── no_watermark/  # ~49,000 ảnh không watermark
 ├── val/
-│   ├── watermark/    # 10,500 ảnh
-│   └── no_watermark/ # 10,500 ảnh
+│   ├── watermark/     # ~10,500 ảnh
+│   └── no_watermark/  # ~10,500 ảnh
 └── test/
-    ├── watermark/    # 10,500 ảnh
-    └── no_watermark/ # 10,500 ảnh
+    ├── watermark/     # ~10,500 ảnh
+    └── no_watermark/  # ~10,500 ảnh
+
+data_invisible/                 # Invisible (COCO + DCT)
+├── train/watermark/     # ~3,500 ảnh
+├── val/watermark/       # ~750 ảnh
+└── test/watermark/      # ~750 ảnh
 ```
 
 ## Huấn luyện
 
-### Train từng mô hình
+### Train trên Combined Dataset (Visible + Invisible)
 
 ```bash
-# Train baseline ResNet18
-python compare_models.py --train_single resnet18 --train_dir ./data/train --val_dir ./data/val --epochs 30
+# Train hybrid model (default: merge cả visible + invisible)
+python compare_models.py --train_single hybrid --epochs 30
 
-# Train baseline MobileNetV3
-python compare_models.py --train_single mobilenet --train_dir ./data/train --val_dir ./data/val --epochs 30
+# Train tất cả models
+python compare_models.py --epochs 30
 
-# Train hybrid model (Ours v2)
-python compare_models.py --train_single hybrid --train_dir ./data/train --val_dir ./data/val --epochs 30
+# Train với batch size lớn hơn
+python compare_models.py --train_single hybrid --epochs 30 --batch_size 64
 ```
 
-### Train tất cả và so sánh
+### Train trên Visible Only
 
 ```bash
-python compare_models.py --train_dir ./data/train --val_dir ./data/val --epochs 30
+python compare_models.py --train_single resnet18 --no_merge
 ```
 
-Checkpoints sẽ được lưu trong:
+### Train bằng train.py (hybrid only)
 
+```bash
+# Combined dataset
+python train.py --epochs 30
+
+# Visible only
+python train.py --no_merge
 ```
-checkpoints/
-├── resnet18/best_model.pth
-├── mobilenet/best_model.pth
-└── hybrid/best_model.pth
+
+### Train bằng main.py (hybrid only)
+
+```bash
+python main.py train --epochs 30
+python main.py train --visible_train_dir ./data/train --visible_val_dir ./data/val --no_merge
 ```
 
 ## Đánh giá
 
-### Đánh giá tất cả các mô hình
+### Evaluate All Models
 
 ```bash
-python evaluate_all.py --checkpoint_dir ./checkpoints --test_dir ./data/test
+# Evaluate tất cả models trên combined dataset
+python evaluate_all.py
+
+# Evaluate trên visible only
+python evaluate_all.py --no_merge
+
+# Evaluate từng model
+python evaluate_all.py --model hybrid
 ```
 
-### Đánh giá từng mô hình
+### Evaluate bằng evaluate.py
 
 ```bash
-python evaluate_all.py --checkpoint_dir ./checkpoints --test_dir ./data/test --model resnet18
-python evaluate_all.py --checkpoint_dir ./checkpoints --test_dir ./data/test --model mobilenet
-python evaluate_all.py --checkpoint_dir ./checkpoints --test_dir ./data/test --model hybrid
+python evaluate.py --model_path ./checkpoints/best_model.pth
+python evaluate.py --model_path ./checkpoints/best_model.pth --invisible_test_dir ./data_invisible/test
 ```
 
-### Đánh giá hybrid model (CLI)
+### Evaluate bằng main.py
 
 ```bash
-python main.py eval --model_path ./checkpoints/hybrid/best_model.pth --test_dir ./data/test
+python main.py eval --model_path ./checkpoints/best_model.pth
 ```
 
-## Phát hiện watermark
+## Phát hiện Watermark
 
 ```bash
 # Phát hiện một ảnh
-python main.py detect --model ./checkpoints/hybrid/best_model.pth --input ./test.jpg
+python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg
 
 # Phát hiện hàng loạt
-python main.py detect --model ./checkpoints/hybrid/best_model.pth --input ./test_folder --output results.txt
+python main.py detect --model ./checkpoints/best_model.pth --input ./test_folder --output results.txt
 
-# Sử dụng TTA
-python main.py detect --model ./checkpoints/hybrid/best_model.pth --input ./test.jpg --tta
+# Sử dụng TTA (Test-Time Augmentation)
+python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg --tta
 ```
+
+## Dataset Summary
+
+| Dataset      | Source       | Type      | Watermark | No Watermark | Total   |
+| ------------ | ------------ | --------- | --------- | ------------ | ------- |
+| CLWD         | Google Drive | Visible   | 70,000    | 70,000       | 140,000 |
+| COCO + DCT   | COCO 2017    | Invisible | 5,000     | 0            | 5,000   |
+| **Combined** | Both         | Both      | 145,000   | 70,000       | 215,000 |
+
+## Command Line Arguments
+
+| Script              | Arguments                                                    | Description            |
+| ------------------- | ------------------------------------------------------------ | ---------------------- |
+| `compare_models.py` | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train & compare models |
+| `evaluate_all.py`   | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate all models    |
+| `train.py`          | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model     |
+| `evaluate.py`       | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate hybrid model  |
+| `main.py`           | Same as above + `--train`, `--eval`, `--detect`              | Unified CLI            |
 
 ## Kiến trúc mô hình đề xuất (Ours v2)
 

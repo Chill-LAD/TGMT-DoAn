@@ -1,3 +1,8 @@
+"""
+Mô hình hybrid CNN-Frequency cho phát hiện watermark (Ours v2).
+Kết hợp ResNet18 backbone với frequency branch và SE attention.
+"""
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +11,10 @@ from config import Config, SEAttentionConfig, ModelConfig
 
 
 class SEAttention(nn.Module):
+    """
+    Squeeze-and-Excitation (SE) Attention Module.
+    Cơ chế attention theo channel, giúp model tập trung vào các đặc trưng quan trọng.
+    """
     def __init__(self, channels, reduction=16):
         super(SEAttention, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -18,12 +27,19 @@ class SEAttention(nn.Module):
 
     def forward(self, x):
         b, c, _, _ = x.size()
+        # Squeeze: Global Average Pooling
         y = self.avg_pool(x).view(b, c)
+        # Excitation: Fully connected layers
         y = self.fc(y).view(b, c, 1, 1)
+        # Scale: nhân attention weights với input
         return x * y.expand_as(x)
 
 
 class FrequencyBranch(nn.Module):
+    """
+    Nhánh trích xuất đặc trưng từ miền tần số (FFT).
+    Nhận input là ảnh FFT đã được normalize, trả về vector đặc trưng 128 chiều.
+    """
     def __init__(self, in_channels=3, out_channels=128):
         super(FrequencyBranch, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=3, padding=1)
@@ -36,6 +52,7 @@ class FrequencyBranch(nn.Module):
         self.fc = nn.Linear(128, out_channels)
 
     def forward(self, x):
+        # Conv -> BN -> ReLU -> Pool (3 lần)
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.max_pool2d(x, 2)
         x = F.relu(self.bn2(self.conv2(x)))
@@ -48,6 +65,10 @@ class FrequencyBranch(nn.Module):
 
 
 class RGBBackbone(nn.Module):
+    """
+    RGB Backbone sử dụng pretrained CNN models.
+    Hỗ trợ ResNet18, ResNet34, ResNet50 và MobileNetV3.
+    """
     def __init__(self, backbone_name="resnet18", pretrained=True):
         super(RGBBackbone, self).__init__()
 
@@ -67,6 +88,7 @@ class RGBBackbone(nn.Module):
             raise ValueError(f"Unsupported backbone: {backbone_name}")
 
         self.feature_dim = feature_dim
+        # Bỏ lớp FC cuối, chỉ giữ lại feature extractor
         self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
 
     def forward(self, x):
@@ -76,10 +98,18 @@ class RGBBackbone(nn.Module):
 
 
 class HybridWatermarkModel(nn.Module):
+    """
+    Mô hình Hybrid CNN-Frequency cho phát hiện watermark (Ours v2).
+    Kiến trúc hai nhánh:
+    - RGB Branch: ResNet18 trích xuất đặc trưng không gian
+    - Frequency Branch: CNN trích xuất đặc trưng tần số
+    - Fusion + SE Attention + Classification
+    """
     def __init__(self, num_classes=2, backbone="resnet18", pretrained=True,
                  dropout=0.5, use_se_attention=True):
         super(HybridWatermarkModel, self).__init__()
 
+        # Khởi tạo hai nhánh
         self.rgb_backbone = RGBBackbone(backbone, pretrained)
         self.freq_branch = FrequencyBranch(out_channels=128)
 
@@ -87,12 +117,15 @@ class HybridWatermarkModel(nn.Module):
         freq_dim = 128
         fused_dim = rgb_dim + freq_dim
 
+        # Fusion layer: kết hợp features từ 2 nhánh
         self.fusion_fc = nn.Linear(fused_dim, 512)
 
+        # SE Attention để tăng cường đặc trưng
         self.use_se_attention = use_se_attention
         if use_se_attention:
             self.se_attention = SEAttention(512, reduction=SEAttentionConfig.reduction)
 
+        # Classifier: Dropout -> FC -> ReLU -> Dropout -> FC
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(512, 256),
@@ -102,37 +135,46 @@ class HybridWatermarkModel(nn.Module):
         )
 
     def forward(self, rgb_input, freq_input=None):
+        # Trích xuất RGB features
         rgb_features = self.rgb_backbone(rgb_input)
 
+        # Trích xuất frequency features (nếu có)
         if freq_input is not None:
             freq_features = self.freq_branch(freq_input)
             fused_features = torch.cat([rgb_features, freq_features], dim=1)
         else:
+            # Zero padding nếu không có frequency input
             freq_features = torch.zeros(rgb_features.size(0), 128).to(rgb_features.device)
             fused_features = torch.cat([rgb_features, freq_features], dim=1)
 
+        # Fusion
         fused_features = self.fusion_fc(fused_features)
 
+        # SE Attention
         if self.use_se_attention:
             fused_features_2d = fused_features.unsqueeze(-1).unsqueeze(-1)
             fused_features_2d = self.se_attention(fused_features_2d)
             fused_features = fused_features_2d.squeeze(-1).squeeze(-1)
 
+        # Classification
         logits = self.classifier(fused_features)
 
         return logits
 
     def freeze_backbone(self):
+        """Đóng băng RGB backbone để chỉ train phần khác."""
         for param in self.rgb_backbone.parameters():
             param.requires_grad = False
 
     def unfreeze_backbone(self):
+        """Mở khóa RGB backbone để train toàn bộ model."""
         for param in self.rgb_backbone.parameters():
             param.requires_grad = True
 
 
 def create_model(num_classes=2, backbone="resnet18", pretrained=True,
                 dropout=0.5, use_se_attention=True):
+    """Factory function để tạo HybridWatermarkModel."""
     model = HybridWatermarkModel(
         num_classes=num_classes,
         backbone=backbone,
@@ -144,6 +186,10 @@ def create_model(num_classes=2, backbone="resnet18", pretrained=True,
 
 
 class WatermarkDetector:
+    """
+    Wrapper class để dễ dàng load model và thực hiện inference.
+    Cung cấp method detect() cho việc phát hiện watermark trên ảnh đơn lẻ.
+    """
     def __init__(self, model_path=None, device=None):
         self.device = device or Config.device
         self.model = create_model(num_classes=2, backbone=ModelConfig.backbone,
@@ -156,6 +202,7 @@ class WatermarkDetector:
             self.load_weights(model_path)
 
     def load_weights(self, path):
+        """Load weights từ checkpoint file."""
         checkpoint = torch.load(path, map_location=self.device)
         if 'model_state_dict' in checkpoint:
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -164,6 +211,14 @@ class WatermarkDetector:
         print(f"Loaded weights from {path}")
 
     def detect(self, image_path, return_prob=False):
+        """
+        Phát hiện watermark trong ảnh.
+        Args:
+            image_path: Đường dẫn đến ảnh
+            return_prob: Có trả về xác suất của cả 2 lớp không
+        Returns:
+            (label, confidence) hoặc (label, confidence, probabilities)
+        """
         import cv2
         from dataset import compute_fft_spectrum
 
@@ -172,14 +227,17 @@ class WatermarkDetector:
             raise ValueError(f"Cannot read image: {image_path}")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        # Resize ảnh
         h, w = Config.image_size, Config.image_size
         image_resized = cv2.resize(image, (w, h))
 
+        # Prepare RGB tensor
         rgb_tensor = torch.from_numpy(image_resized).float() / 255.0
         rgb_tensor = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])(rgb_tensor.permute(2, 0, 1))
         rgb_tensor = rgb_tensor.unsqueeze(0).to(self.device)
 
+        # Prepare frequency tensor
         freq_tensor = compute_fft_spectrum(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
@@ -196,4 +254,3 @@ class WatermarkDetector:
 
 
 from torchvision import transforms
-import os

@@ -394,12 +394,10 @@ Sử dụng pseudo-labeling để mở rộng tập training.
 
 #### 4.1.1. Tập dữ liệu sử dụng
 
-| Dataset          | Nguồn            | Số lượng | Loại WM             |
-| ---------------- | ---------------- | -------- | ------------------- |
-| PITA             | HuggingFace      | ~20,000  | Visible (logo/text) |
-| CLWD             | arXiv 2012.07616 | ~70,000  | Visible (removal)   |
-| COCO + synthetic | COCO 2017        | ~5,000   | Visible/Invisible   |
-| UniFreq-100K     | arXiv 2603.06723 | ~100,000 | Invisible           |
+| Dataset              | Nguồn            | Số lượng | Loại WM   |
+| -------------------- | ---------------- | -------- | --------- |
+| CLWD                 | arXiv 2012.07616 | ~70,000  | Visible   |
+| COCO val + synthetic | COCO 2017        | ~5,000   | Invisible |
 
 #### 4.1.2. Chia train/val/test
 

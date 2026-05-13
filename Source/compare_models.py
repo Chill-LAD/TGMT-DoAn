@@ -1,3 +1,12 @@
+"""
+Script huấn luyện và so sánh 4 mô hình watermark detection:
+- Baseline 1: ResNet18 (RGB only)
+- Baseline 2: MobileNetV3 (RGB only)
+- Ours v1: ResNet18 + Frequency branch
+- Ours v2: ResNet18 + Frequency branch + SE Attention
+
+Mỗi mô hình được huấn luyện trên cùng dataset và so sánh kết quả.
+"""
 import os
 import torch
 import torch.nn as nn
@@ -7,10 +16,15 @@ from tqdm import tqdm
 import time
 
 from config import Config
-from dataset import get_dataloader
 
 
 def create_model(model_type):
+    """
+    Tạo model theo loại:
+    - resnet18: Baseline ResNet18 (RGB only)
+    - mobilenet: Baseline MobileNetV3 (RGB only)
+    - hybrid: Hybrid model (RGB + Frequency + SE Attention)
+    """
     if model_type == "resnet18":
         from baseline_resnet import create_baseline_resnet
         return create_baseline_resnet(num_classes=2, pretrained=True, dropout=0.5)
@@ -25,7 +39,38 @@ def create_model(model_type):
         raise ValueError(f"Unknown model type: {model_type}")
 
 
+def get_dataloaders(visible_train_dir=None, visible_val_dir=None,
+                   invisible_train_dir=None, invisible_val_dir=None,
+                   batch_size=32, num_workers=4, merge=True):
+    """Tạo train và validation dataloaders."""
+    from dual_dataset import get_dual_dataloader
+
+    train_loader = get_dual_dataloader(
+        visible_dir=visible_train_dir,
+        invisible_dir=invisible_train_dir,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        mode="train",
+        merge=merge
+    )
+
+    val_loader = get_dual_dataloader(
+        visible_dir=visible_val_dir,
+        invisible_dir=invisible_val_dir,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        mode="val",
+        merge=merge
+    )
+
+    return train_loader, val_loader
+
+
 def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler=None):
+    """
+    Huấn luyện một epoch cho một model.
+    Tự động nhận diện loại model để truyền frequency input nếu cần.
+    """
     model.train()
     running_loss = 0.0
     correct = 0
@@ -36,6 +81,7 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
         rgb = batch["rgb"].to(device)
         labels = batch["label"].to(device)
 
+        # Hybrid model cần cả RGB và frequency input
         if model.__class__.__name__ == "HybridWatermarkModel":
             freq = batch["frequency"].to(device)
         else:
@@ -44,6 +90,7 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
         optimizer.zero_grad()
 
         if scaler is not None:
+            # Mixed precision training
             with torch.amp.autocast('cuda'):
                 outputs = model(rgb, freq) if freq is not None else model(rgb)
                 loss = criterion(outputs, labels)
@@ -73,6 +120,7 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
 
 
 def validate(model, val_loader, criterion, device):
+    """Đánh giá model trên validation set."""
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -83,6 +131,7 @@ def validate(model, val_loader, criterion, device):
             rgb = batch["rgb"].to(device)
             labels = batch["label"].to(device)
 
+            # Hybrid model cần cả RGB và frequency input
             if model.__class__.__name__ == "HybridWatermarkModel":
                 freq = batch["frequency"].to(device)
             else:
@@ -99,21 +148,40 @@ def validate(model, val_loader, criterion, device):
     return running_loss / len(val_loader), 100. * correct / total
 
 
-def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
-                lr=1e-4, checkpoint_dir=None, resume=None):
+def train_model(model_type, visible_train_dir=None, visible_val_dir=None,
+               invisible_train_dir=None, invisible_val_dir=None,
+               num_epochs=30, batch_size=32, lr=1e-4,
+               checkpoint_dir=None, resume=None, merge=True):
+    """
+    Huấn luyện một model cụ thể.
+    Args:
+        model_type: Loại model (resnet18, mobilenet, hybrid)
+        checkpoint_dir: Thư mục lưu checkpoint
+    Returns:
+        results: Dict chứa history của training
+        best_val_acc: Validation accuracy cao nhất
+    """
     device = torch.device(Config.device)
     print(f"\n{'='*60}")
     print(f"Training {model_type.upper()}")
     print(f"{'='*60}")
+    print(f"Visible train: {visible_train_dir}")
+    print(f"Invisible train: {invisible_train_dir}")
+    print(f"Merge datasets: {merge}")
 
     if checkpoint_dir is None:
         checkpoint_dir = f"./checkpoints/{model_type}"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_loader = get_dataloader(train_dir, batch_size=batch_size,
-                                  num_workers=Config.num_workers, mode="train")
-    val_loader = get_dataloader(val_dir, batch_size=batch_size,
-                                num_workers=Config.num_workers, mode="val")
+    train_loader, val_loader = get_dataloaders(
+        visible_train_dir=visible_train_dir,
+        visible_val_dir=visible_val_dir,
+        invisible_train_dir=invisible_train_dir,
+        invisible_val_dir=invisible_val_dir,
+        batch_size=batch_size,
+        num_workers=Config.num_workers,
+        merge=merge
+    )
 
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
@@ -126,6 +194,7 @@ def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
 
     scaler = torch.amp.GradScaler('cuda') if Config.use_amp and device.type == "cuda" else None
 
+    # Resume from checkpoint
     start_epoch = 0
     best_val_acc = 0.0
 
@@ -138,6 +207,7 @@ def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
         best_val_acc = checkpoint.get('best_val_acc', 0.0)
         print(f"Resumed from epoch {start_epoch}")
 
+    # Lưu lịch sử training
     results = {
         "train_loss": [], "train_acc": [],
         "val_loss": [], "val_acc": [],
@@ -164,6 +234,7 @@ def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
         print(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
         print(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
+        # Save checkpoint
         checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}.pth")
         torch.save({
             'epoch': epoch,
@@ -174,6 +245,7 @@ def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
             'best_val_acc': best_val_acc
         }, checkpoint_path)
 
+        # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_path = os.path.join(checkpoint_dir, "best_model.pth")
@@ -188,7 +260,13 @@ def train_model(model_type, train_dir, val_dir, num_epochs=30, batch_size=32,
     return results, best_val_acc
 
 
-def compare_models(train_dir, val_dir, model_types=None, num_epochs=30, batch_size=32):
+def compare_models(visible_train_dir=None, visible_val_dir=None,
+                  invisible_train_dir=None, invisible_val_dir=None,
+                  model_types=None, num_epochs=30, batch_size=32, merge=True):
+    """
+    Huấn luyện và so sánh nhiều mô hình.
+    In bảng so sánh kết quả cuối cùng.
+    """
     if model_types is None:
         model_types = ["resnet18", "mobilenet", "hybrid"]
 
@@ -196,18 +274,24 @@ def compare_models(train_dir, val_dir, model_types=None, num_epochs=30, batch_si
     print(f"\n{'='*60}")
     print("MODEL COMPARISON")
     print(f"{'='*60}")
+    print(f"Visible: {visible_train_dir}")
+    print(f"Invisible: {invisible_train_dir}")
+    print(f"Merge: {merge}")
 
     comparison_results = {}
 
     for model_type in model_types:
-        checkpoint_dir = f"./checkpoints/{model_type}"
+        checkpoint_dir = f"./checkpoints/{model_type}_combined"
         results, best_acc = train_model(
             model_type=model_type,
-            train_dir=train_dir,
-            val_dir=val_dir,
+            visible_train_dir=visible_train_dir,
+            visible_val_dir=visible_val_dir,
+            invisible_train_dir=invisible_train_dir,
+            invisible_val_dir=invisible_val_dir,
             num_epochs=num_epochs,
             batch_size=batch_size,
-            checkpoint_dir=checkpoint_dir
+            checkpoint_dir=checkpoint_dir,
+            merge=merge
         )
         comparison_results[model_type] = {
             "best_val_acc": best_acc,
@@ -229,12 +313,21 @@ def compare_models(train_dir, val_dir, model_types=None, num_epochs=30, batch_si
 
 
 def main():
+    """Entry point cho command line interface."""
     import argparse
     parser = argparse.ArgumentParser(description="Train and compare watermark detection models")
-    parser.add_argument("--train_dir", type=str, default="./data/train")
-    parser.add_argument("--val_dir", type=str, default="./data/val")
+    parser.add_argument("--visible_train_dir", type=str, default="./data/train",
+                       help="Path to visible watermark training data")
+    parser.add_argument("--visible_val_dir", type=str, default="./data/val",
+                       help="Path to visible watermark validation data")
+    parser.add_argument("--invisible_train_dir", type=str, default="./data_invisible",
+                       help="Path to invisible watermark training data (parent dir)")
+    parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible",
+                       help="Path to invisible watermark validation data (parent dir)")
     parser.add_argument("--epochs", type=int, default=Config.num_epochs)
     parser.add_argument("--batch_size", type=int, default=Config.batch_size)
+    parser.add_argument("--no_merge", action="store_true",
+                       help="Don't merge visible and invisible datasets")
     parser.add_argument("--models", nargs="+", default=["resnet18", "mobilenet", "hybrid"],
                        help="Models to train: resnet18, mobilenet, hybrid")
     parser.add_argument("--train_single", type=str, default=None,
@@ -242,12 +335,28 @@ def main():
 
     args = parser.parse_args()
 
+    merge = not args.no_merge
+
     if args.train_single:
-        train_model(args.train_single, args.train_dir, args.val_dir,
-                    num_epochs=args.epochs, batch_size=args.batch_size)
+        train_model(args.train_single,
+                   visible_train_dir=args.visible_train_dir,
+                   visible_val_dir=args.visible_val_dir,
+                   invisible_train_dir=args.invisible_train_dir,
+                   invisible_val_dir=args.invisible_val_dir,
+                   num_epochs=args.epochs,
+                   batch_size=args.batch_size,
+                   merge=merge)
     else:
-        compare_models(args.train_dir, args.val_dir, model_types=args.models,
-                      num_epochs=args.epochs, batch_size=args.batch_size)
+        compare_models(
+            visible_train_dir=args.visible_train_dir,
+            visible_val_dir=args.visible_val_dir,
+            invisible_train_dir=args.invisible_train_dir,
+            invisible_val_dir=args.invisible_val_dir,
+            model_types=args.models,
+            num_epochs=args.epochs,
+            batch_size=args.batch_size,
+            merge=merge
+        )
 
 
 if __name__ == "__main__":
