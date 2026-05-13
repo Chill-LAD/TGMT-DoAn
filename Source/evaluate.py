@@ -5,7 +5,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.metrics import confusion_matrix, classification_report
 from tqdm import tqdm
 
-from config import Config
+from config import Config, ModelConfig
 from dataset import get_dataloader
 from model import create_model
 import torch.nn.functional as F
@@ -15,9 +15,9 @@ def evaluate(model_path, test_dir, batch_size=32, use_tta=False):
     device = torch.device(Config.device)
     print(f"Using device: {device}")
 
-    model = create_model(num_classes=2, backbone=Config.backbone,
-                        pretrained=False, dropout=ModelConfig.dropout,
-                        use_se_attention=True)
+    model = create_model(num_classes=2, backbone=ModelConfig.backbone,
+                         pretrained=False, dropout=ModelConfig.dropout,
+                         use_se_attention=True)
     model = model.to(device)
 
     checkpoint = torch.load(model_path, map_location=device)
@@ -136,9 +136,8 @@ def main():
                        help="Batch size")
     parser.add_argument("--tta", action="store_true",
                        help="Use test-time augmentation")
-    parser.add_argument("--conditions", nargs="+",
-                       default=["clean", "jpeg", "resize", "noise"],
-                       help="Test conditions to evaluate")
+    parser.add_argument("--conditions", nargs="+", default=None,
+                       help="Test conditions to evaluate (e.g., watermark no_watermark)")
 
     args = parser.parse_args()
 

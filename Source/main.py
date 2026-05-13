@@ -111,7 +111,7 @@ def train_command(args):
 def eval_command(args):
     from evaluate import evaluate, evaluate_on_conditions
 
-    if args.conditions:
+    if args.conditions is not None:
         evaluate_on_conditions(args.model_path, args.test_dir, args.conditions)
     else:
         evaluate(args.model_path, args.test_dir, args.batch_size, args.tta)
@@ -172,8 +172,8 @@ Examples:
     eval_parser.add_argument("--test_dir", type=str, default="./data/test")
     eval_parser.add_argument("--batch_size", type=int, default=32)
     eval_parser.add_argument("--tta", action="store_true", help="Use test-time augmentation")
-    eval_parser.add_argument("--conditions", nargs="+",
-                             default=["clean", "jpeg", "resize", "noise"])
+    eval_parser.add_argument("--conditions", nargs="+", default=None,
+                              help="Test conditions (e.g., watermark no_watermark)")
 
     detect_parser = subparsers.add_parser("detect", help="Detect watermark in image(s)")
     detect_parser.add_argument("--model", type=str, required=True)

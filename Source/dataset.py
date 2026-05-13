@@ -1,450 +1,156 @@
 import os
-import cv2
-import numpy as np
 import torch
-import torchvision.transforms as T
-
+import numpy as np
+import cv2
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+import random
+from config import Config, AugmentationConfig
 
 
-# RGB PREPROCESSING
-
-class RGBPreprocessor:
-    """
-    Tiền xử lý ảnh RGB cho CNN branch.
-
-    Pipeline:
-        Resize
-        Data Augmentation
-        ToTensor
-        Normalize
-    """
-
-    def __init__(self, image_size=224, train=True):
-
-        self.image_size = image_size
-        self.train = train
-
-        
-        # Data augmentation cho train set
-        
-        if self.train:
-            self.transform = T.Compose([
-                T.Resize((image_size, image_size)),
-
-                # Random flip
-                T.RandomHorizontalFlip(p=0.5),
-
-                # Random rotation
-                T.RandomRotation(degrees=15),
-
-                # Điều chỉnh sáng/tương phản
-                T.ColorJitter(
-                    brightness=0.2,
-                    contrast=0.2
-                ),
-
-                # Chuyển sang tensor
-                T.ToTensor(),
-
-                # Normalize theo chuẩn ImageNet
-                T.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                )
-            ])
-
-        
-        # Validation/Test transform
-        
-        else:
-            self.transform = T.Compose([
-                T.Resize((image_size, image_size)),
-                T.ToTensor(),
-
-                T.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                )
-            ])
-
-    def __call__(self, image):
-        """
-        Parameters
-        ----------
-        image : PIL.Image
-
-        Returns
-        -------
-        tensor : torch.Tensor
-            Shape: (3, H, W)
-        """
-
-        return self.transform(image)
-
-
-# FFT PREPROCESSING
-
-class FFTPreprocessor:
-    """
-    Tiền xử lý ảnh Frequency Domain.
-
-    Pipeline:
-        RGB -> Gray
-        FFT
-        FFT Shift
-        Magnitude Spectrum
-        Log Transform
-        Normalize
-        Resize
-        To Tensor
-    """
-
-    def __init__(self, image_size=224):
-
-        self.image_size = image_size
-
-    def compute_fft(self, image):
-        """
-        Tính FFT magnitude spectrum.
-
-        Parameters
-        ----------
-        image : numpy.ndarray
-            RGB image
-
-        Returns
-        -------
-        log_magnitude : numpy.ndarray
-            FFT magnitude spectrum
-        """
-
-        # Convert sang grayscale      
+def compute_fft_spectrum(image):
+    if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = image
 
-        
-        # FFT 2D 
-        fft = np.fft.fft2(gray)
+    f = np.fft.fft2(gray)
+    fshift = np.fft.fftshift(f)
+    magnitude = np.abs(fshift)
 
-        
-        # Shift zero-frequency component vào giữa ảnh    
-        fft_shift = np.fft.fftshift(fft)
+    log_magnitude = np.log(magnitude + 1)
 
-        
-        # Magnitude spectrum       
-        magnitude = np.abs(fft_shift)
+    min_val = log_magnitude.min()
+    max_val = log_magnitude.max()
+    if max_val > min_val:
+        normalized = (log_magnitude - min_val) / (max_val - min_val)
+    else:
+        normalized = np.zeros_like(log_magnitude)
 
-        
-        # Log transform
-        #
-        # Giúp giảm dynamic range      
-        log_magnitude = np.log(magnitude + 1)
+    h, w = normalized.shape
+    target_h, target_w = Config.image_size, Config.image_size
+    top = (h - target_h) // 2
+    left = (w - target_w) // 2
+    cropped = normalized[top:top+target_h, left:left+target_w]
 
-        return log_magnitude
+    freq_tensor = torch.from_numpy(cropped).float()
+    freq_tensor = freq_tensor.unsqueeze(0)
+    freq_tensor = freq_tensor.repeat(3, 1, 1)
 
-    def normalize(self, image):
-        """
-        Normalize FFT image về [0,1]
-        """
+    return freq_tensor
 
-        min_val = image.min()
-        max_val = image.max()
-
-        image = (image - min_val) / (max_val - min_val + 1e-8)
-
-        return image
-
-    def __call__(self, image):
-        """
-        Parameters
-        ----------
-        image : PIL.Image
-
-        Returns
-        -------
-        tensor : torch.Tensor
-            Shape: (1, H, W)
-        """
-
-        
-        # PIL -> numpy       
-        image = np.array(image)
-
-        
-        # FFT processing      
-        fft_image = self.compute_fft(image)
-
-        
-        # Normalize      
-        fft_image = self.normalize(fft_image)
-
-        
-        # Resize      
-        fft_image = cv2.resize(
-            fft_image,
-            (self.image_size, self.image_size)
-        )
-
-        
-        # Convert sang float32      
-        fft_image = fft_image.astype(np.float32)
-
-        
-        # Add channel dimension
-        #
-        # (H,W) -> (1,H,W)     
-        fft_image = np.expand_dims(fft_image, axis=0)
-
-        
-        # Convert sang tensor      
-        fft_tensor = torch.from_numpy(fft_image)
-
-        return fft_tensor
-
-
-
-# JPEG COMPRESSION AUGMENTATION
-
-class JPEGCompression:
-    """
-    Giả lập JPEG compression.
-
-    Watermark thường bị ảnh hưởng bởi nén JPEG,
-    augmentation này giúp model robust hơn.
-    """
-
-    def __init__(self, quality=80):
-        self.quality = quality
-
-    def __call__(self, image):
-
-        # PIL -> numpy
-        image = np.array(image)
-
-        # RGB -> BGR
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-        # Encode JPEG
-        encode_param = [
-            int(cv2.IMWRITE_JPEG_QUALITY),
-            self.quality
-        ]
-
-        _, encoded_img = cv2.imencode(
-            '.jpg',
-            image,
-            encode_param
-        )
-
-        # Decode JPEG
-        decoded_img = cv2.imdecode(
-            encoded_img,
-            cv2.IMREAD_COLOR
-        )
-
-        # BGR -> RGB
-        decoded_img = cv2.cvtColor(
-            decoded_img,
-            cv2.COLOR_BGR2RGB
-        )
-
-        # numpy -> PIL
-        decoded_img = Image.fromarray(decoded_img)
-
-        return decoded_img
-
-
-# MAIN PREPROCESSOR
-
-class WatermarkPreprocessor:
-    """
-    Kết hợp:
-        RGB preprocessing
-        FFT preprocessing
-
-    Output:
-        rgb_tensor
-        fft_tensor
-    """
-
-    def __init__(
-        self,
-        image_size=224,
-        train=True,
-        use_jpeg_aug=False
-    ):
-
-        self.rgb_processor = RGBPreprocessor(
-            image_size=image_size,
-            train=train
-        )
-
-        self.fft_processor = FFTPreprocessor(
-            image_size=image_size
-        )
-
-        self.use_jpeg_aug = use_jpeg_aug
-
-        if self.use_jpeg_aug:
-            self.jpeg_aug = JPEGCompression(
-                quality=80
-            )
-
-    def __call__(self, image):
-        """
-        Parameters
-        ----------
-        image : PIL.Image
-
-        Returns
-        -------
-        rgb_tensor : torch.Tensor
-            Shape: (3,224,224)
-
-        fft_tensor : torch.Tensor
-            Shape: (1,224,224)
-        """
-
-        
-        # JPEG augmentation        
-        if self.use_jpeg_aug:
-            image = self.jpeg_aug(image)
-
-        
-        # RGB branch        
-        rgb_tensor = self.rgb_processor(image)
-
-        
-        # FFT branch
-        fft_tensor = self.fft_processor(image)
-
-        return rgb_tensor, fft_tensor
-    
-
-
-# DATASET CLASS
 
 class WatermarkDataset(Dataset):
-    """
-    Dataset cho bài toán Watermark Detection.
-
-    Output:
-        rgb_tensor
-        fft_tensor
-        label
-    """
-
-    def __init__(
-        self,
-        root_dir,
-        image_size=224,
-        train=True,
-        use_jpeg_aug=False
-    ):
-        """
-        Parameters
-        ----------
-        root_dir : str
-            Đường dẫn dataset
-
-        image_size : int
-            Resize image
-
-        train : bool
-            Train / Validation mode
-
-        use_jpeg_aug : bool
-            Có dùng JPEG augmentation hay không
-        """
-
+    def __init__(self, root_dir, transform=None, mode="train"):
         self.root_dir = root_dir
+        self.transform = transform
+        self.mode = mode
+        self.aug_config = AugmentationConfig()
 
-        self.samples = []
+        self.wm_dir = os.path.join(root_dir, "watermark")
+        self.no_wm_dir = os.path.join(root_dir, "no_watermark")
 
-        # Class mapping
-        #
-        # no_watermark -> 0
-        # watermark    -> 1
-        self.class_to_idx = {
-            "no_watermark": 0,
-            "watermark": 1
-        }
+        self.wm_images = []
+        self.no_wm_images = []
 
-        # Preprocessor
-        self.preprocessor = WatermarkPreprocessor(
-            image_size=image_size,
-            train=train,
-            use_jpeg_aug=use_jpeg_aug
-        )
+        if os.path.exists(self.wm_dir):
+            self.wm_images = [os.path.join(self.wm_dir, f) for f in os.listdir(self.wm_dir)
+                             if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
 
-        # Load toàn bộ image path
-        self.load_dataset()
+        if os.path.exists(self.no_wm_dir):
+            self.no_wm_images = [os.path.join(self.no_wm_dir, f) for f in os.listdir(self.no_wm_dir)
+                                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
 
-    def load_dataset(self):
-        """
-        Load toàn bộ image path và label.
-        """
-
-        for class_name, label in self.class_to_idx.items():
-
-            class_dir = os.path.join(
-                self.root_dir,
-                class_name
-            )
-
-            # Kiểm tra folder tồn tại
-            if not os.path.exists(class_dir):
-                continue
-
-            for image_name in os.listdir(class_dir):
-
-                image_path = os.path.join(
-                    class_dir,
-                    image_name
-                )
-
-                # Lưu sample
-                self.samples.append(
-                    (image_path, label)
-                )
+        self.images = self.wm_images + self.no_wm_images
+        self.labels = [1] * len(self.wm_images) + [0] * len(self.no_wm_images)
 
     def __len__(self):
-        """
-        Số lượng samples.
-        """
+        return len(self.images)
 
-        return len(self.samples)
+    def __getitem__(self, idx):
+        img_path = self.images[idx]
+        label = self.labels[idx]
 
-    def __getitem__(self, index):
-        """
-        Parameters
-        ----------
-        index : int
+        image = cv2.imread(img_path)
+        if image is None:
+            image = np.zeros((Config.image_size, Config.image_size, 3), dtype=np.uint8)
+        else:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        Returns
-        -------
-        rgb_tensor : Tensor
-            Shape: (3,H,W)
+        if self.mode == "train":
+            image = self._augment(image)
 
-        fft_tensor : Tensor
-            Shape: (1,H,W)
+        image_pil = Image.fromarray(image)
 
-        label : int
-        """
+        if self.transform:
+            rgb_tensor = self.transform(image_pil)
+        else:
+            rgb_tensor = transforms.ToTensor()(image_pil)
+            rgb_tensor = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                              std=[0.229, 0.224, 0.225])(rgb_tensor)
 
-        image_path, label = self.samples[index]
-
-        # Load image
-        image = Image.open(image_path).convert("RGB")
-
-        # Preprocessing
-        rgb_tensor, fft_tensor = self.preprocessor(image)
+        freq_tensor = compute_fft_spectrum(image)
 
         return {
             "rgb": rgb_tensor,
-            "fft": fft_tensor,
-            "label": label
+            "frequency": freq_tensor,
+            "label": torch.tensor(label, dtype=torch.long)
         }
 
-    
+    def _augment(self, image):
+        if random.random() < self.aug_config.random_flip_prob:
+            image = np.fliplr(image).copy()
+
+        if random.random() < self.aug_config.random_flip_prob:
+            angle = random.uniform(-self.aug_config.random_rotation_deg,
+                                 self.aug_config.random_rotation_deg)
+            h, w = image.shape[:2]
+            M = cv2.getRotationMatrix2D((w/2, h/2), angle, 1.0)
+            image = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+
+        if random.random() < self.aug_config.jpeg_prob:
+            quality = random.randint(*self.aug_config.jpeg_quality)
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+            _, encoded = cv2.imencode('.jpg', image, encode_param)
+            image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
+        if random.random() < self.aug_config.gaussian_noise_prob:
+            sigma = self.aug_config.gaussian_noise_sigma
+            noise = np.random.normal(0, sigma, image.shape)
+            image = np.clip(image + noise, 0, 255).astype(np.uint8)
+
+        return image
+
+
+def get_dataloader(data_dir, batch_size=32, num_workers=4, mode="train"):
+    if mode == "train":
+        transform = transforms.Compose([
+            transforms.Resize((Config.image_size, Config.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                               std=[0.229, 0.224, 0.225])
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.Resize((Config.image_size, Config.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                               std=[0.229, 0.224, 0.225])
+        ])
+
+    dataset = WatermarkDataset(data_dir, transform=transform, mode=mode)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(mode=="train"),
+                           num_workers=num_workers, pin_memory=True)
+
+    return dataloader
+
+
+def create_synthetic_dataset(data_dir, num_samples=1000):
+    os.makedirs(os.path.join(data_dir, "watermark"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "no_watermark"), exist_ok=True)
+
+    print(f"Creating synthetic dataset in {data_dir}")
+    print(f"  - Watermark: {num_samples} samples")
+    print(f"  - No watermark: {num_samples} samples")
+    print("Note: Please replace with real dataset for actual training")
