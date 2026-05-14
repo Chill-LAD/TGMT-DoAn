@@ -1,9 +1,15 @@
 """
 Script đánh giá tất cả các mô hình watermark detection và so sánh kết quả.
-Hỗ trợ ResNet18, MobileNetV3 và Hybrid model.
+Hỗ trợ ResNet18, MobileNetV3, Ours v1 và Ours v2.
 Hỗ trợ Test-Time Augmentation (TTA).
 """
 import os
+import warnings
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore')
+
 import torch
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -18,7 +24,7 @@ def create_model(model_type, pretrained=False):
     """
     Tạo model theo loại.
     Args:
-        model_type: resnet18, mobilenet, hoặc hybrid
+        model_type: resnet18, mobilenet, ours_v1, ours_v2
         pretrained: Có load pretrained weights không
     """
     if model_type == "resnet18":
@@ -27,12 +33,19 @@ def create_model(model_type, pretrained=False):
     elif model_type == "mobilenet":
         from baseline_mobilenet import create_baseline_mobilenet
         return create_baseline_mobilenet(num_classes=2, pretrained=pretrained, dropout=0.5)
-    elif model_type == "hybrid":
-        from model import create_model
-        return create_model(num_classes=2, backbone="resnet18", pretrained=pretrained,
-                          dropout=0.5, use_se_attention=True)
+    elif model_type == "ours_v1":
+        from model_v1 import create_model_v1
+        return create_model_v1(num_classes=2, backbone="resnet18", pretrained=pretrained, dropout=0.5)
+    elif model_type == "ours_v2":
+        from model_v2 import create_model_v2
+        return create_model_v2(num_classes=2, backbone="resnet18", pretrained=pretrained, dropout=0.5)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Unknown model type: {model_type}. Available: resnet18, mobilenet, ours_v1, ours_v2")
+
+
+def get_model_needs_freq(model_type):
+    """Kiểm tra model có cần frequency input không."""
+    return model_type in ["ours_v1", "ours_v2"]
 
 
 def get_test_dataloaders(visible_test_dir=None, invisible_test_dir=None,
@@ -90,13 +103,11 @@ def evaluate_single_model(model_type, model_path, visible_test_dir=None,
         for batch in tqdm(test_loader, desc=f"[{model_type}]"):
             rgb = batch["rgb"].to(device)
 
-            # Hybrid model cần frequency input
-            if model_type == "hybrid":
+            if get_model_needs_freq(model_type):
                 freq = batch["frequency"].to(device)
             else:
                 freq = None
 
-            # Đo thời gian inference
             start_time = time.time()
             if freq is not None:
                 outputs = model(rgb, freq)
@@ -175,7 +186,7 @@ def evaluate_all_models(checkpoint_dir, visible_test_dir=None, invisible_test_di
     """
     results = {}
 
-    for model_type in ["resnet18", "mobilenet", "hybrid"]:
+    for model_type in ["resnet18", "mobilenet", "ours_v1", "ours_v2"]:
         model_path = os.path.join(checkpoint_dir, f"{model_type}_combined", "best_model.pth")
         if not os.path.exists(model_path):
             model_path = os.path.join(checkpoint_dir, model_type, "best_model.pth")
@@ -223,7 +234,7 @@ def main():
     parser.add_argument("--tta", action="store_true", help="Use test-time augmentation")
     parser.add_argument("--no_merge", action="store_true", help="Don't merge visible and invisible datasets")
     parser.add_argument("--model", type=str, default=None,
-                       choices=["resnet18", "mobilenet", "hybrid", "all"],
+                       choices=["resnet18", "mobilenet", "ours_v1", "ours_v2", "all"],
                        help="Specific model to evaluate (default: all)")
 
     args = parser.parse_args()

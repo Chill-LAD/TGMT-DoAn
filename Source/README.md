@@ -16,11 +16,13 @@ Source/
 ├── create_invisible_dataset.py # Tạo invisible watermark dataset
 ├── baseline_resnet.py          # Baseline 1: ResNet18 (RGB only)
 ├── baseline_mobilenet.py      # Baseline 2: MobileNetV3 (RGB only)
-├── model.py                    # Ours v2: Hybrid CNN-Frequency + SE Attention
-├── compare_models.py           # Train & so sánh 4 mô hình
-├── evaluate_all.py             # Đánh giá tất cả các mô hình
-├── train.py                    # Script huấn luyện (hybrid model)
-├── evaluate.py                 # Script đánh giá (hybrid model)
+├── model_v1.py                 # Ours v1: Hybrid CNN-Frequency (KHÔNG có SE Attention)
+├── model_v2.py                 # Ours v2: Hybrid CNN-Frequency + SE Attention
+├── train_v1.py                # Huấn luyện Ours v1
+├── train_v2.py                # Huấn luyện Ours v2
+├── train.py                   # Train & so sánh 4 mô hình (compare_models.py wrapper)
+├── evaluate.py               # Script đánh giá (Ours v2)
+├── evaluate_all.py            # Đánh giá tất cả các mô hình
 ├── main.py                     # CLI interface
 ├── requirements.txt            # Python dependencies
 └── README.md                   # File này
@@ -97,37 +99,25 @@ data_invisible/                 # Invisible (COCO + DCT)
 ### Train trên Combined Dataset (Visible + Invisible)
 
 ```bash
-# Train hybrid model (default: merge cả visible + invisible)
-python compare_models.py --train_single hybrid --epochs 30
+# Train Ours v1 (không có SE Attention)
+python train_v1.py --epochs 30
 
-# Train tất cả models
+# Train Ours v2 (có SE Attention)
+python train_v2.py --epochs 30
+
+# Train tất cả models bằng compare_models.py
 python compare_models.py --epochs 30
 
-# Train với batch size lớn hơn
-python compare_models.py --train_single hybrid --epochs 30 --batch_size 64
+# Train một model cụ thể
+python compare_models.py --train_single ours_v1 --epochs 30
+python compare_models.py --train_single ours_v2 --epochs 30
 ```
 
 ### Train trên Visible Only
 
 ```bash
-python compare_models.py --train_single resnet18 --no_merge
-```
-
-### Train bằng train.py (hybrid only)
-
-```bash
-# Combined dataset
-python train.py --epochs 30
-
-# Visible only
-python train.py --no_merge
-```
-
-### Train bằng main.py (hybrid only)
-
-```bash
-python main.py train --epochs 30
-python main.py train --visible_train_dir ./data/train --visible_val_dir ./data/val --no_merge
+python train_v1.py --no_merge
+python train_v2.py --no_merge
 ```
 
 ## Đánh giá
@@ -142,20 +132,15 @@ python evaluate_all.py
 python evaluate_all.py --no_merge
 
 # Evaluate từng model
-python evaluate_all.py --model hybrid
+python evaluate_all.py --model ours_v1
+python evaluate_all.py --model ours_v2
 ```
 
 ### Evaluate bằng evaluate.py
 
 ```bash
-python evaluate.py --model_path ./checkpoints/best_model.pth
-python evaluate.py --model_path ./checkpoints/best_model.pth --invisible_test_dir ./data_invisible/test
-```
-
-### Evaluate bằng main.py
-
-```bash
-python main.py eval --model_path ./checkpoints/best_model.pth
+python evaluate.py --model_path ./checkpoints/ours_v2/best_model.pth
+python evaluate.py --model_path ./checkpoints/ours_v1/best_model.pth --invisible_test_dir ./data_invisible/test
 ```
 
 ## Phát hiện Watermark
@@ -189,16 +174,23 @@ python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg --
 | `evaluate.py`       | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate hybrid model  |
 | `main.py`           | Same as above + `--train`, `--eval`, `--detect`              | Unified CLI            |
 
-## Kiến trúc mô hình đề xuất (Ours v2)
+## Kiến trúc mô hình
 
-| Component        | Mô tả                                            |
-| ---------------- | ------------------------------------------------ |
-| RGB Backbone     | ResNet18 (ImageNet pretrained, 11.7M params)     |
-| Frequency Branch | FFT → Log → Normalize → 1D CNN (128 dim)         |
-| Fusion           | Concat → FC(640→512)                             |
-| Attention        | SE-Net (reduction=16)                            |
-| Classification   | FC(512→256) + Dropout(0.5) → FC(256→2)           |
-| Output           | Binary classification (Watermark / No Watermark) |
+### Ours v1 (model_v1.py)
+
+- RGB Backbone: ResNet18 (ImageNet pretrained, 11.7M params)
+- Frequency Branch: FFT → Log → Normalize → CNN (128 dim)
+- Fusion: Concat → FC(640→512)
+- Classification: FC(512→256) + Dropout(0.5) → FC(256→2)
+- KHÔNG có SE Attention
+
+### Ours v2 (model_v2.py)
+
+- RGB Backbone: ResNet18 (ImageNet pretrained, 11.7M params)
+- Frequency Branch: FFT → Log → Normalize → CNN (128 dim)
+- Fusion: Concat → FC(640→512)
+- Attention: SE-Net (reduction=16)
+- Classification: FC(512→256) + Dropout(0.5) → FC(256→2)
 
 ## Kết quả
 

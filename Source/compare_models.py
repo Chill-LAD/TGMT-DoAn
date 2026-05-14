@@ -2,12 +2,18 @@
 Script huấn luyện và so sánh 4 mô hình watermark detection:
 - Baseline 1: ResNet18 (RGB only)
 - Baseline 2: MobileNetV3 (RGB only)
-- Ours v1: ResNet18 + Frequency branch
+- Ours v1: ResNet18 + Frequency branch (KHÔNG có SE Attention)
 - Ours v2: ResNet18 + Frequency branch + SE Attention
 
 Mỗi mô hình được huấn luyện trên cùng dataset và so sánh kết quả.
 """
 import os
+import warnings
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore')
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,13 +23,13 @@ import time
 
 from config import Config
 
-
 def create_model(model_type):
     """
     Tạo model theo loại:
     - resnet18: Baseline ResNet18 (RGB only)
     - mobilenet: Baseline MobileNetV3 (RGB only)
-    - hybrid: Hybrid model (RGB + Frequency + SE Attention)
+    - ours_v1: Hybrid model (RGB + Frequency, KHÔNG có SE Attention)
+    - ours_v2: Hybrid model (RGB + Frequency + SE Attention)
     """
     if model_type == "resnet18":
         from baseline_resnet import create_baseline_resnet
@@ -31,12 +37,19 @@ def create_model(model_type):
     elif model_type == "mobilenet":
         from baseline_mobilenet import create_baseline_mobilenet
         return create_baseline_mobilenet(num_classes=2, pretrained=True, dropout=0.5)
-    elif model_type == "hybrid":
-        from model import create_model
-        return create_model(num_classes=2, backbone="resnet18", pretrained=True,
-                          dropout=0.5, use_se_attention=True)
+    elif model_type == "ours_v1":
+        from model_v1 import create_model_v1
+        return create_model_v1(num_classes=2, backbone="resnet18", pretrained=True, dropout=0.5)
+    elif model_type == "ours_v2":
+        from model_v2 import create_model_v2
+        return create_model_v2(num_classes=2, backbone="resnet18", pretrained=True, dropout=0.5)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Unknown model type: {model_type}. Available: resnet18, mobilenet, ours_v1, ours_v2")
+
+
+def get_model_needs_freq(model_type):
+    """Kiểm tra model có cần frequency input không."""
+    return model_type in ["ours_v1", "ours_v2"]
 
 
 def get_dataloaders(visible_train_dir=None, visible_val_dir=None,
@@ -66,7 +79,7 @@ def get_dataloaders(visible_train_dir=None, visible_val_dir=None,
     return train_loader, val_loader
 
 
-def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler=None):
+def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch, scaler=None, model_type=None):
     """
     Huấn luyện một epoch cho một model.
     Tự động nhận diện loại model để truyền frequency input nếu cần.
@@ -81,8 +94,8 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
         rgb = batch["rgb"].to(device)
         labels = batch["label"].to(device)
 
-        # Hybrid model cần cả RGB và frequency input
-        if model.__class__.__name__ == "HybridWatermarkModel":
+        # Hybrid models cần cả RGB và frequency input
+        if model_type and get_model_needs_freq(model_type):
             freq = batch["frequency"].to(device)
         else:
             freq = None
@@ -90,7 +103,6 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
         optimizer.zero_grad()
 
         if scaler is not None:
-            # Mixed precision training
             with torch.amp.autocast('cuda'):
                 outputs = model(rgb, freq) if freq is not None else model(rgb)
                 loss = criterion(outputs, labels)
@@ -119,7 +131,7 @@ def train_single_epoch(model, train_loader, criterion, optimizer, device, epoch,
     return running_loss / len(train_loader), 100. * correct / total
 
 
-def validate(model, val_loader, criterion, device):
+def validate(model, val_loader, criterion, device, model_type=None):
     """Đánh giá model trên validation set."""
     model.eval()
     running_loss = 0.0
@@ -131,8 +143,8 @@ def validate(model, val_loader, criterion, device):
             rgb = batch["rgb"].to(device)
             labels = batch["label"].to(device)
 
-            # Hybrid model cần cả RGB và frequency input
-            if model.__class__.__name__ == "HybridWatermarkModel":
+            # Hybrid models cần cả RGB và frequency input
+            if model_type and get_model_needs_freq(model_type):
                 freq = batch["frequency"].to(device)
             else:
                 freq = None
@@ -218,8 +230,8 @@ def train_model(model_type, visible_train_dir=None, visible_val_dir=None,
         start_time = time.time()
 
         train_loss, train_acc = train_single_epoch(
-            model, train_loader, criterion, optimizer, device, epoch, scaler)
-        val_loss, val_acc = validate(model, val_loader, criterion, device)
+            model, train_loader, criterion, optimizer, device, epoch, scaler, model_type)
+        val_loss, val_acc = validate(model, val_loader, criterion, device, model_type)
 
         epoch_time = time.time() - start_time
         scheduler.step()
@@ -268,7 +280,7 @@ def compare_models(visible_train_dir=None, visible_val_dir=None,
     In bảng so sánh kết quả cuối cùng.
     """
     if model_types is None:
-        model_types = ["resnet18", "mobilenet", "hybrid"]
+        model_types = ["resnet18", "mobilenet", "ours_v1", "ours_v2"]
 
     device = torch.device(Config.device)
     print(f"\n{'='*60}")
@@ -328,10 +340,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=Config.batch_size)
     parser.add_argument("--no_merge", action="store_true",
                        help="Don't merge visible and invisible datasets")
-    parser.add_argument("--models", nargs="+", default=["resnet18", "mobilenet", "hybrid"],
-                       help="Models to train: resnet18, mobilenet, hybrid")
+    parser.add_argument("--models", nargs="+",
+                       default=["resnet18", "mobilenet", "ours_v1", "ours_v2"],
+                       help="Models to train: resnet18, mobilenet, ours_v1, ours_v2")
     parser.add_argument("--train_single", type=str, default=None,
-                       help="Train a single model: resnet18, mobilenet, or hybrid")
+                       help="Train a single model: resnet18, mobilenet, ours_v1, or ours_v2")
 
     args = parser.parse_args()
 

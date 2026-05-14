@@ -72,10 +72,12 @@ class DualWatermarkDataset(Dataset):
         return samples
 
     def _load_split_invisible(self, data_dir, mode):
-        """Load invisible watermark dataset (chỉ có thư mục watermark)."""
+        """Load invisible watermark dataset (chỉ load từ split tương ứng với mode)."""
         samples = []
-        watermark_dir = os.path.join(data_dir, "watermark")
-
+        
+        split = "train" if mode else "test"
+        watermark_dir = os.path.join(data_dir, split, "watermark")
+        
         if os.path.exists(watermark_dir):
             for img_name in os.listdir(watermark_dir):
                 if img_name.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
