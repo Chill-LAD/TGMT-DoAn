@@ -4,6 +4,10 @@ Cung cấp 3 lệnh chính: train, eval, detect.
 Hỗ trợ cả visible và invisible watermarks.
 """
 import os
+import warnings
+warnings.filterwarnings("ignore", message=".*pretrained.*is deprecated.*")
+warnings.filterwarnings("ignore", message=".*Arguments other than a weight enum.*")
+
 import argparse
 import sys
 from pathlib import Path
@@ -13,8 +17,6 @@ import numpy as np
 from PIL import Image
 
 from config import Config, ModelConfig
-from model import create_model, WatermarkDetector
-from dataset import compute_fft_spectrum
 import torch.nn.functional as F
 from torchvision import transforms
 
@@ -24,11 +26,29 @@ class WatermarkDetectionApp:
     Ứng dụng phát hiện watermark với giao diện CLI.
     Hỗ trợ phát hiện ảnh đơn lẻ và hàng loạt.
     """
-    def __init__(self, model_path=None):
+    def __init__(self, model_path=None, model_version="v2"):
+        from model_v1 import create_model_v1
+        from model_v2 import create_model_v2
+        from dataset import compute_fft_spectrum
+
+        self.compute_fft_spectrum = compute_fft_spectrum
         self.device = torch.device(Config.device)
-        self.model = create_model(num_classes=2, backbone=ModelConfig.backbone,
-                                  pretrained=False, dropout=ModelConfig.dropout,
-                                  use_se_attention=True)
+
+        if model_version == "v1":
+            self.model = create_model_v1(
+                num_classes=2,
+                backbone=ModelConfig.backbone,
+                pretrained=False,
+                dropout=ModelConfig.dropout
+            )
+        else:
+            self.model = create_model_v2(
+                num_classes=2,
+                backbone=ModelConfig.backbone,
+                pretrained=False,
+                dropout=ModelConfig.dropout
+            )
+
         self.model.to(self.device)
         self.model.eval()
 
@@ -68,7 +88,7 @@ class WatermarkDetectionApp:
         rgb_tensor = rgb_tensor.unsqueeze(0).to(self.device)
 
         # Prepare frequency tensor
-        freq_tensor = compute_fft_spectrum(image).unsqueeze(0).to(self.device)
+        freq_tensor = self.compute_fft_spectrum(image).unsqueeze(0).to(self.device)
 
         # Inference với TTA
         if use_tta:
@@ -162,7 +182,7 @@ def eval_command(args):
 
 def detect_command(args):
     """Xử lý lệnh detect."""
-    app = WatermarkDetectionApp(args.model)
+    app = WatermarkDetectionApp(args.model, args.model_version)
 
     if os.path.isfile(args.input):
         result = app.detect_single_image(args.input, args.tta)
@@ -247,6 +267,9 @@ Examples:
     detect_parser.add_argument("--output", type=str, default=None,
                               help="Output file for batch results")
     detect_parser.add_argument("--tta", action="store_true", help="Use test-time augmentation")
+    detect_parser.add_argument("--model_version", type=str, default="v2",
+                              choices=["v1", "v2"],
+                              help="Model version (v1: no SE, v2: with SE)")
 
     args = parser.parse_args()
 

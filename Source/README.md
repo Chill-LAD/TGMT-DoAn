@@ -13,6 +13,7 @@ Source/
 ├── dual_dataset.py             # Dataset class (visible + invisible)
 ├── divide_dataset.py           # Chia dataset CLWD
 ├── download_coco.py           # Download COCO 2017 val
+├── compare_models.py          # Train & so sánh 4 mô hình
 ├── create_invisible_dataset.py # Tạo invisible watermark dataset
 ├── baseline_resnet.py          # Baseline 1: ResNet18 (RGB only)
 ├── baseline_mobilenet.py      # Baseline 2: MobileNetV3 (RGB only)
@@ -20,7 +21,6 @@ Source/
 ├── model_v2.py                 # Ours v2: Hybrid CNN-Frequency + SE Attention
 ├── train_v1.py                # Huấn luyện Ours v1
 ├── train_v2.py                # Huấn luyện Ours v2
-├── train.py                   # Train & so sánh 4 mô hình (compare_models.py wrapper)
 ├── evaluate.py               # Script đánh giá (Ours v2)
 ├── evaluate_all.py            # Đánh giá tất cả các mô hình
 ├── main.py                     # CLI interface

@@ -186,13 +186,15 @@ def train(visible_train_dir=None, visible_val_dir=None,
     if resume and os.path.exists(resume):
         checkpoint = torch.load(resume)
         model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        if 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         best_val_acc = checkpoint.get('best_val_acc', 0.0)
         print(f"Resumed from epoch {start_epoch}")
 
-    writer = SummaryWriter(Config.log_dir + "/ours_v2")
+    writer = SummaryWriter(checkpoint_dir + "_logs")
 
     for epoch in range(start_epoch, num_epochs):
         train_loss, train_acc = train_epoch(
@@ -252,6 +254,8 @@ def main():
                        help="Path to invisible watermark training data")
     parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible/val",
                        help="Path to invisible watermark validation data")
+    parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints/ours_v2",
+                       help="Path to save checkpoints")
     parser.add_argument("--epochs", type=int, default=Config.num_epochs,
                        help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=Config.batch_size,
@@ -279,6 +283,7 @@ def main():
         batch_size=args.batch_size,
         lr=args.lr,
         backbone=args.backbone,
+        checkpoint_dir=args.checkpoint_dir,
         resume=args.resume,
         merge=merge
     )

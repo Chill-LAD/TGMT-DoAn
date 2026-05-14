@@ -2,6 +2,10 @@
 Mô hình hybrid CNN-Frequency cho phát hiện watermark (Ours v1).
 Kết hợp ResNet18 backbone với frequency branch, KHÔNG có SE attention.
 """
+import warnings
+warnings.filterwarnings("ignore", message=".*pretrained.*is deprecated.*")
+warnings.filterwarnings("ignore", message=".*Arguments other than a weight enum.*")
+
 import os
 import torch
 import torch.nn as nn
