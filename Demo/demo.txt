@@ -2,21 +2,4 @@
 
 ## Video Demo
 
-Ví dụ:
-- YouTube: https://youtube.com/watch?v=xxxxx
-- Google Drive: https://drive.google.com/xxxxx
-- Local: ./demo.mp4
-
-## Hướng dẫn demo
-
-1. Chạy chương trình huấn luyện
-2. Đánh giá mô hình trên tập test
-3. Demo phát hiện watermark trên ảnh mẫu
-4. So sánh kết quả trước và sau khi cải tiến
-
-## Clip minh họa cần có
-
-1. Training process (loss, accuracy curves)
-2. Evaluation results (confusion matrix, metrics)
-3. Demo interface (nếu có GUI)
-4. Sample predictions với confidence scores
+https://www.youtube.com/watch?v=i6gL3c9TO4A

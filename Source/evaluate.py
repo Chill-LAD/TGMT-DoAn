@@ -16,9 +16,9 @@ from config import Config, ModelConfig
 
 def create_model(num_classes=2, backbone="resnet18", pretrained=False, dropout=0.5, use_se_attention=True):
     """Tạo hybrid model để đánh giá."""
-    from model import create_model
+    from model_v2 import create_model_v2 as create_model
     return create_model(num_classes=num_classes, backbone=backbone,
-                       pretrained=pretrained, dropout=dropout, use_se_attention=use_se_attention)
+                       pretrained=pretrained, dropout=dropout)
 
 
 def get_test_dataloader(visible_test_dir=None, invisible_test_dir=None,

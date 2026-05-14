@@ -49,12 +49,19 @@ class DualWatermarkDataset(Dataset):
         subdirs_to_check = ["watermark", "no_watermark"]
 
         split = "train" if mode else "test"
-        search_dirs = []
-        # Tìm kiếm trong cả các thư mục con và thư mục gốc
-        for subdir in subdirs_to_check:
-            for s in ["train", "val", "test"]:
-                search_dirs.append((os.path.join(data_dir, s, subdir), 1 if subdir == "watermark" else 0))
-            search_dirs.append((os.path.join(data_dir, subdir), 1 if subdir == "watermark" else 0))
+
+        if os.path.basename(data_dir) in ["train", "val", "test"]:
+            search_dirs = []
+            for subdir in subdirs_to_check:
+                dir_path = os.path.join(data_dir, subdir)
+                label = 1 if subdir == "watermark" else 0
+                search_dirs.append((dir_path, label))
+        else:
+            search_dirs = []
+            for subdir in subdirs_to_check:
+                dir_path = os.path.join(data_dir, split, subdir)
+                label = 1 if subdir == "watermark" else 0
+                search_dirs.append((dir_path, label))
 
         for full_dir, label in search_dirs:
             if not os.path.exists(full_dir):
@@ -76,7 +83,13 @@ class DualWatermarkDataset(Dataset):
         samples = []
         
         split = "train" if mode else "test"
-        watermark_dir = os.path.join(data_dir, split, "watermark")
+
+        if os.path.basename(data_dir) == "watermark":
+            watermark_dir = data_dir
+        elif os.path.basename(data_dir) in ["train", "val", "test"]:
+            watermark_dir = os.path.join(data_dir, "watermark")
+        else:
+            watermark_dir = os.path.join(data_dir, split, "watermark")
         
         if os.path.exists(watermark_dir):
             for img_name in os.listdir(watermark_dir):

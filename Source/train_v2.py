@@ -138,7 +138,7 @@ def validate(model, val_loader, criterion, device):
 def train(visible_train_dir=None, visible_val_dir=None,
          invisible_train_dir=None, invisible_val_dir=None,
          num_epochs=30, batch_size=32, lr=1e-4,
-         backbone="resnet18", checkpoint_dir="./checkpoints/ours_v2", resume=None, merge=True):
+         backbone="resnet18", checkpoint_dir="./checkpoints/ours_v2_combined", resume=None, merge=True):
     """
     Hàm huấn luyện chính cho Ours v2.
     """
@@ -254,7 +254,7 @@ def main():
                        help="Path to invisible watermark training data")
     parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible/val",
                        help="Path to invisible watermark validation data")
-    parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints/ours_v2",
+    parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints/ours_v2_combined",
                        help="Path to save checkpoints")
     parser.add_argument("--epochs", type=int, default=Config.num_epochs,
                        help="Number of epochs")
@@ -274,6 +274,12 @@ def main():
 
     merge = not args.no_merge
 
+    if args.resume:
+        checkpoint_dir = os.path.dirname(os.path.abspath(args.resume))
+        print(f"Auto-detected checkpoint_dir from resume: {checkpoint_dir}")
+    else:
+        checkpoint_dir = args.checkpoint_dir
+
     train(
         visible_train_dir=args.visible_train_dir,
         visible_val_dir=args.visible_val_dir,
@@ -283,7 +289,7 @@ def main():
         batch_size=args.batch_size,
         lr=args.lr,
         backbone=args.backbone,
-        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_dir=checkpoint_dir,
         resume=args.resume,
         merge=merge
     )

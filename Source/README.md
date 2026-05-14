@@ -195,12 +195,14 @@ python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --in
 - Attention: SE-Net (reduction=16)
 - Classification: Dropout(0.5) → FC(512→256) → ReLU → Dropout(0.5) → FC(256→2)
 
-## Kết quả
+## Kết quả (Evaluated on Combined Dataset)
 
-| Metric    | Baseline 1 | Baseline 2 | Ours v1 | Ours v2 |
-| --------- | ---------- | ---------- | ------- | ------- |
-| Accuracy  | TBD        | TBD        | TBD     | TBD     |
-| F1-score  | TBD        | TBD        | TBD     | TBD     |
-| Precision | TBD        | TBD        | TBD     | TBD     |
-| Recall    | TBD        | TBD        | TBD     | TBD     |
-| Inference | ~40ms      | ~20ms      | ~80ms   | ~90ms   |
+| Metric    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 |
+| --------- | --------------------- | ---------------------- | ------- | ------- |
+| Accuracy  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  |
+| Precision | 87.62%                | 91.08%                 | 93.64%  | 89.29%  |
+| Recall    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  |
+| F1-score  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  |
+| Inference | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   |
+
+**Ours v1** đạt accuracy cao nhất (85.12%) với precision 93.64%. **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%.

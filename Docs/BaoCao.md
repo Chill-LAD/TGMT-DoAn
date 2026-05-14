@@ -13,7 +13,7 @@
 
 ## I. TÓM TẮT (ABSTRACT)
 
-Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên các tập dữ liệu chuẩn cho thấy mô hình đạt F1-score 0.90 trên tập test với thời gian xử lý dưới 100ms/ảnh.
+Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên tập dữ liệu kết hợp CLWD và COCO cho thấy mô hình đạt F1-score 84.76% với thời gian xử lý dưới 10ms/ảnh trên GPU.
 
 ---
 
@@ -437,13 +437,15 @@ Sử dụng pseudo-labeling để mở rộng tập training.
 
 ### 4.5. Kết quả
 
-| Metric    | Baseline | Mục tiêu | Nâng cao |
-| --------- | -------- | -------- | -------- |
-| Accuracy  | 85%      | 90%      | 93%      |
-| F1-score  | 0.85     | 0.90     | 0.92     |
-| Precision | 83%      | 88%      | 91%      |
-| Recall    | 87%      | 92%      | 93%      |
-| Inference | 50ms     | 80ms     | 100ms    |
+| Metric    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 |
+| --------- | --------------------- | ---------------------- | ------- | ------- |
+| Accuracy  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  |
+| Precision | 87.62%                | 91.08%                 | 93.64%  | 89.29%  |
+| Recall    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  |
+| F1-score  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  |
+| Inference | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   |
+
+**Nhận xét:** Mô hình Ours v1 đạt accuracy cao nhất (85.12%) với precision 93.64%. Ours v2 cân bằng hơn với F1-score 84.76% và recall 80.66%, cho thấy SE attention giúp cải thiện khả năng phát hiện watermark thực sự (recall cao hơn). Mô hình hybrid CNN-Frequency cải thiện đáng kể so với baseline ResNet18 (+1% accuracy).
 
 ---
 

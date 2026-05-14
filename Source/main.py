@@ -152,7 +152,7 @@ class WatermarkDetectionApp:
 
 def train_command(args):
     """Xử lý lệnh train."""
-    from train import train
+    from train_v1 import train
     train(visible_train_dir=args.visible_train_dir,
           visible_val_dir=args.visible_val_dir,
           invisible_train_dir=args.invisible_train_dir,
@@ -161,6 +161,7 @@ def train_command(args):
           batch_size=args.batch_size,
           lr=args.lr,
           backbone=args.backbone,
+          checkpoint_dir=args.checkpoint_dir,
           resume=args.resume,
           merge=not args.no_merge)
 
@@ -236,6 +237,8 @@ Examples:
                             help="Path to invisible watermark training data")
     train_parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible/val",
                             help="Path to invisible watermark validation data")
+    train_parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints/ours_v1_combined",
+                            help="Path to save checkpoints")
     train_parser.add_argument("--epochs", type=int, default=Config.num_epochs)
     train_parser.add_argument("--batch_size", type=int, default=Config.batch_size)
     train_parser.add_argument("--lr", type=float, default=Config.learning_rate)
