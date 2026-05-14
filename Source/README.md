@@ -77,21 +77,21 @@ python create_invisible_dataset.py --coco_dir ./coco_data/val2017 --output_dir .
 ### Dataset Structure
 
 ```
-data/                           # Visible (CLWD)
+Source/data/                           # Visible (CLWD)
 ├── train/
-│   ├── watermark/     # ~49,000 ảnh có watermark
-│   └── no_watermark/  # ~49,000 ảnh không watermark
+│   ├── watermark/     # 49,000 ảnh có watermark
+│   └── no_watermark/  # 49,000 ảnh không watermark
 ├── val/
-│   ├── watermark/     # ~10,500 ảnh
-│   └── no_watermark/  # ~10,500 ảnh
+│   ├── watermark/     # 10,500 ảnh
+│   └── no_watermark/  # 10,500 ảnh
 └── test/
-    ├── watermark/     # ~10,500 ảnh
-    └── no_watermark/  # ~10,500 ảnh
+    ├── watermark/     # 10,500 ảnh
+    └── no_watermark/  # 10,500 ảnh
 
-data_invisible/                 # Invisible (COCO + DCT)
-├── train/watermark/     # ~3,500 ảnh
-├── val/watermark/       # ~750 ảnh
-└── test/watermark/      # ~750 ảnh
+Source/data_invisible/                 # Invisible (COCO + DCT)
+├── train/watermark/     # 3,500 ảnh
+├── val/watermark/       # 750 ảnh
+└── test/watermark/      # 750 ảnh
 ```
 
 ## Huấn luyện
@@ -146,23 +146,26 @@ python evaluate.py --model_path ./checkpoints/ours_v1/best_model.pth --invisible
 ## Phát hiện Watermark
 
 ```bash
-# Phát hiện một ảnh
-python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg
+# Phát hiện một ảnh (v1 - không SE Attention)
+python main.py detect --model ./checkpoints/ours_v1_combined/best_model.pth --input ./test.jpg --model_version v1
+
+# Phát hiện một ảnh (v2 - có SE Attention)
+python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --model_version v2
 
 # Phát hiện hàng loạt
-python main.py detect --model ./checkpoints/best_model.pth --input ./test_folder --output results.txt
+python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test_folder --output results.txt --model_version v2
 
 # Sử dụng TTA (Test-Time Augmentation)
-python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg --tta
+python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --model_version v2
 ```
 
 ## Dataset Summary
 
-| Dataset        | Source           | Type      | Watermark | No Watermark | Total   |
-| -------------- | ---------------- | --------- | --------- | ------------ | ------- |
-| CLWD           | arXiv 2012.07616 | Visible   | 70,000    | 70,000       | 140,000 |
-| COCO val + DCT | COCO 2017        | Invisible | 5,000     | 0            | 5,000   |
-| **Combined**   | Both             | Both      | 75,000    | 70,000       | 145,000 |
+| Dataset      | Source     | Type      | Watermark | No Watermark | Total   |
+| ------------ | ---------- | --------- | --------- | ------------ | ------- |
+| CLWD         | arXiv 2012 | Visible   | 70,000    | 70,000       | 140,000 |
+| COCO + DCT   | COCO 2017  | Invisible | 5,000     | 0            | 5,000   |
+| **Combined** | Both       | Both      | 75,000    | 70,000       | 145,000 |
 
 ## Command Line Arguments
 
@@ -178,28 +181,26 @@ python main.py detect --model ./checkpoints/best_model.pth --input ./test.jpg --
 
 ### Ours v1 (model_v1.py)
 
-- RGB Backbone: ResNet18 (ImageNet pretrained, 11.7M params)
-- Frequency Branch: FFT → Log → Normalize → CNN (128 dim)
-- Fusion: Concat → FC(640→512)
-- Classification: FC(512→256) + Dropout(0.5) → FC(256→2)
+- RGB Backbone: ResNet18 (ImageNet pretrained, 512 dim output)
+- Frequency Branch: FFT → Log → CNN (32→64→128) → 128 dim
+- Fusion: Concat(512+128=640) → FC(640→512)
+- Classification: Dropout(0.5) → FC(512→256) → ReLU → Dropout(0.5) → FC(256→2)
 - KHÔNG có SE Attention
 
 ### Ours v2 (model_v2.py)
 
-- RGB Backbone: ResNet18 (ImageNet pretrained, 11.7M params)
-- Frequency Branch: FFT → Log → Normalize → CNN (128 dim)
-- Fusion: Concat → FC(640→512)
+- RGB Backbone: ResNet18 (ImageNet pretrained, 512 dim output)
+- Frequency Branch: FFT → Log → CNN (32→64→128) → 128 dim
+- Fusion: Concat(512+128=640) → FC(640→512)
 - Attention: SE-Net (reduction=16)
-- Classification: FC(512→256) + Dropout(0.5) → FC(256→2)
+- Classification: Dropout(0.5) → FC(512→256) → ReLU → Dropout(0.5) → FC(256→2)
 
 ## Kết quả
 
 | Metric    | Baseline 1 | Baseline 2 | Ours v1 | Ours v2 |
 | --------- | ---------- | ---------- | ------- | ------- |
-| Accuracy  | 85%        | 82%        | 88%     | 90%     |
-| F1-score  | 0.85       | 0.82       | 0.88    | 0.90    |
-| Precision | 83%        | 80%        | 87%     | 88%     |
-| Recall    | 87%        | 84%        | 89%     | 92%     |
+| Accuracy  | TBD        | TBD        | TBD     | TBD     |
+| F1-score  | TBD        | TBD        | TBD     | TBD     |
+| Precision | TBD        | TBD        | TBD     | TBD     |
+| Recall    | TBD        | TBD        | TBD     | TBD     |
 | Inference | ~40ms      | ~20ms      | ~80ms   | ~90ms   |
-
-# 
