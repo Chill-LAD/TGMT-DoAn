@@ -1,7 +1,6 @@
 """
-CLI interface cho bài toán phát hiện watermark.
-Cung cấp 3 lệnh chính: train, eval, detect.
-Hỗ trợ cả visible và invisible watermarks.
+CLI interface cho phát hiện watermark.
+Hỗ trợ phát hiện ảnh đơn lẻ và hàng loạt với TTA.
 """
 import os
 import warnings
@@ -9,8 +8,6 @@ warnings.filterwarnings("ignore", message=".*pretrained.*is deprecated.*")
 warnings.filterwarnings("ignore", message=".*Arguments other than a weight enum.*")
 
 import argparse
-import sys
-from pathlib import Path
 import torch
 import cv2
 import numpy as np
@@ -21,7 +18,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 
 
-class WatermarkDetectionApp:
+class WatermarkDetector:
     """
     Ứng dụng phát hiện watermark với giao diện CLI.
     Hỗ trợ phát hiện ảnh đơn lẻ và hàng loạt.
@@ -150,40 +147,9 @@ class WatermarkDetectionApp:
         return results
 
 
-def train_command(args):
-    """Xử lý lệnh train."""
-    from train_v1 import train
-    train(visible_train_dir=args.visible_train_dir,
-          visible_val_dir=args.visible_val_dir,
-          invisible_train_dir=args.invisible_train_dir,
-          invisible_val_dir=args.invisible_val_dir,
-          num_epochs=args.epochs,
-          batch_size=args.batch_size,
-          lr=args.lr,
-          backbone=args.backbone,
-          checkpoint_dir=args.checkpoint_dir,
-          resume=args.resume,
-          merge=not args.no_merge)
-
-
-def eval_command(args):
-    """Xử lý lệnh eval."""
-    from evaluate import evaluate, evaluate_on_classes
-
-    if args.classes is not None:
-        evaluate_on_classes(args.model_path, args.visible_test_dir, args.classes)
-    else:
-        evaluate(args.model_path,
-                visible_test_dir=args.visible_test_dir,
-                invisible_test_dir=args.invisible_test_dir,
-                batch_size=args.batch_size,
-                use_tta=args.tta,
-                merge=not args.no_merge)
-
-
 def detect_command(args):
     """Xử lý lệnh detect."""
-    app = WatermarkDetectionApp(args.model, args.model_version)
+    app = WatermarkDetector(args.model, args.model_version)
 
     if os.path.isfile(args.input):
         result = app.detect_single_image(args.input, args.tta)
@@ -202,91 +168,42 @@ def detect_command(args):
 
 def main():
     """
-    Main entry point cho CLI.
-    Cung cấp 3 subcommands: train, eval, detect.
+    Main entry point cho CLI detect.
     """
     parser = argparse.ArgumentParser(
-        description="Watermark Detection CLI",
+        description="Watermark Detection CLI - Detect mode",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  Train model (combined dataset):
-    python main.py train --epochs 30
+  Detect single image (v2 with SE Attention):
+    python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --model_version v2
 
-  Train model (visible only):
-    python main.py train --visible_train_dir ./data/train --visible_val_dir ./data/val --no_merge
+  Detect single image (v1 without SE Attention):
+    python detect.py --model ./checkpoints/ours_v1_combined/best_model.pth --input ./test.jpg --model_version v1
 
-  Evaluate model:
-    python main.py eval --model_path ./checkpoints/best_model.pth
+  Detect batch images:
+    python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test_folder --output results.txt --model_version v2
 
-  Detect single image:
-    python main.py detect --model ./checkpoints/best_model.pth --input ./test/image.jpg
+  Detect with TTA (Test-Time Augmentation):
+    python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --model_version v2
         """
     )
 
-    # Subparsers cho các lệnh
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # Train parser
-    train_parser = subparsers.add_parser("train", help="Train watermark detection model")
-    train_parser.add_argument("--visible_train_dir", type=str, default="./data/train",
-                            help="Path to visible watermark training data")
-    train_parser.add_argument("--visible_val_dir", type=str, default="./data/val",
-                            help="Path to visible watermark validation data")
-    train_parser.add_argument("--invisible_train_dir", type=str, default="./data_invisible/train",
-                            help="Path to invisible watermark training data")
-    train_parser.add_argument("--invisible_val_dir", type=str, default="./data_invisible/val",
-                            help="Path to invisible watermark validation data")
-    train_parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints/ours_v1_combined",
-                            help="Path to save checkpoints")
-    train_parser.add_argument("--epochs", type=int, default=Config.num_epochs)
-    train_parser.add_argument("--batch_size", type=int, default=Config.batch_size)
-    train_parser.add_argument("--lr", type=float, default=Config.learning_rate)
-    train_parser.add_argument("--backbone", type=str, default="resnet18",
-                             choices=["resnet18", "resnet34", "resnet50"])
-    train_parser.add_argument("--resume", type=str, default=None)
-    train_parser.add_argument("--no_merge", action="store_true",
-                             help="Don't merge visible and invisible datasets")
-
-    # Eval parser
-    eval_parser = subparsers.add_parser("eval", help="Evaluate watermark detection model")
-    eval_parser.add_argument("--model_path", type=str, required=True)
-    eval_parser.add_argument("--visible_test_dir", type=str, default="./data/test",
-                           help="Path to visible watermark test data")
-    eval_parser.add_argument("--invisible_test_dir", type=str, default="./data_invisible/test",
-                           help="Path to invisible watermark test data")
-    eval_parser.add_argument("--batch_size", type=int, default=32)
-    eval_parser.add_argument("--tta", action="store_true", help="Use test-time augmentation")
-    eval_parser.add_argument("--no_merge", action="store_true",
-                            help="Don't merge visible and invisible datasets")
-    eval_parser.add_argument("--classes", nargs="+", default=None,
-                            help="Classes to evaluate (e.g., watermark no_watermark)")
-
     # Detect parser
-    detect_parser = subparsers.add_parser("detect", help="Detect watermark in image(s)")
-    detect_parser.add_argument("--model", type=str, required=True)
-    detect_parser.add_argument("--input", type=str, required=True,
-                              help="Image file or directory")
-    detect_parser.add_argument("--output", type=str, default=None,
-                              help="Output file for batch results")
-    detect_parser.add_argument("--tta", action="store_true", help="Use test-time augmentation")
-    detect_parser.add_argument("--model_version", type=str, default="v2",
-                              choices=["v1", "v2"],
-                              help="Model version (v1: no SE, v2: with SE)")
+    parser.add_argument("--model", type=str, required=True,
+                       help="Path to model checkpoint")
+    parser.add_argument("--input", type=str, required=True,
+                       help="Image file or directory")
+    parser.add_argument("--output", type=str, default=None,
+                       help="Output file for batch results")
+    parser.add_argument("--tta", action="store_true",
+                       help="Use test-time augmentation")
+    parser.add_argument("--model_version", type=str, default="v2",
+                       choices=["v1", "v2"],
+                       help="Model version (v1: no SE, v2: with SE)")
 
     args = parser.parse_args()
-
-    if args.command is None:
-        parser.print_help()
-        return
-
-    # Dispatch commands
-    if args.command == "train":
-        train_command(args)
-    elif args.command == "eval":
-        eval_command(args)
-    elif args.command == "detect":
-        detect_command(args)
+    detect_command(args)
 
 
 if __name__ == "__main__":

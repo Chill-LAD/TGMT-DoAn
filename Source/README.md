@@ -21,9 +21,9 @@ Source/
 ├── model_v2.py                 # Ours v2: Hybrid CNN-Frequency + SE Attention
 ├── train_v1.py                # Huấn luyện Ours v1
 ├── train_v2.py                # Huấn luyện Ours v2
-├── evaluate.py               # Script đánh giá (Ours v2)
+├── evaluate.py               # Script đánh giá
 ├── evaluate_all.py            # Đánh giá tất cả các mô hình
-├── main.py                     # CLI interface
+├── detect.py                   # CLI phát hiện watermark
 ├── requirements.txt            # Python dependencies
 └── README.md                   # File này
 ```
@@ -147,16 +147,16 @@ python evaluate.py --model_path ./checkpoints/ours_v1/best_model.pth --invisible
 
 ```bash
 # Phát hiện một ảnh (v1 - không SE Attention)
-python main.py detect --model ./checkpoints/ours_v1_combined/best_model.pth --input ./test.jpg --model_version v1
+python detect.py --model ./checkpoints/ours_v1_combined/best_model.pth --input ./test.jpg --model_version v1
 
 # Phát hiện một ảnh (v2 - có SE Attention)
-python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --model_version v2
+python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --model_version v2
 
 # Phát hiện hàng loạt
-python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test_folder --output results.txt --model_version v2
+python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test_folder --output results.txt --model_version v2
 
 # Sử dụng TTA (Test-Time Augmentation)
-python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --model_version v2
+python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --model_version v2
 ```
 
 ## Dataset Summary
@@ -173,9 +173,10 @@ python main.py detect --model ./checkpoints/ours_v2_combined/best_model.pth --in
 | ------------------- | ------------------------------------------------------------ | ---------------------- |
 | `compare_models.py` | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train & compare models |
 | `evaluate_all.py`   | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate all models    |
-| `train.py`          | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model     |
+| `train_v1.py`       | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model v1  |
+| `train_v2.py`       | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model v2  |
 | `evaluate.py`       | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate hybrid model  |
-| `main.py`           | Same as above + `--train`, `--eval`, `--detect`              | Unified CLI            |
+| `detect.py`         | `--model`, `--input`, `--tta`, `--model_version`             | Detect watermark       |
 
 ## Kiến trúc mô hình
 
