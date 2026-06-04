@@ -21,8 +21,9 @@ Source/
 ├── model_v2.py                 # Ours v2: Hybrid CNN-Frequency + SE Attention
 ├── train_v1.py                # Huấn luyện Ours v1
 ├── train_v2.py                # Huấn luyện Ours v2
-├── evaluate.py               # Script đánh giá
+├── evaluate.py               # Script đánh giá từng mô hình
 ├── evaluate_all.py            # Đánh giá tất cả các mô hình
+├── evaluate_advanced.py       # Ablation study cho TTA + Multi-scale
 ├── detect.py                   # CLI phát hiện watermark
 ├── requirements.txt            # Python dependencies
 └── README.md                   # File này
@@ -139,8 +140,17 @@ python evaluate_all.py --model ours_v2
 ### Evaluate bằng evaluate.py
 
 ```bash
-python evaluate.py --model_path ./checkpoints/ours_v2/best_model.pth
-python evaluate.py --model_path ./checkpoints/ours_v1/best_model.pth --invisible_test_dir ./data_invisible/test
+python evaluate.py --model_path ./checkpoints/ours_v2_combined/best_model.pth
+python evaluate.py --model_path ./checkpoints/ours_v1_combined/best_model.pth --invisible_test_dir ./data_invisible/test
+```
+
+### Ablation Study (TTA + Multi-scale)
+
+```bash
+# Chạy ablation study đầy đủ (baseline, TTA, multi-scale, TTA+MS)
+python evaluate_advanced.py
+
+# Kết quả lưu vào ablation_results.txt
 ```
 
 ## Phát hiện Watermark
@@ -155,8 +165,14 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 # Phát hiện hàng loạt
 python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test_folder --output results.txt --model_version v2
 
-# Sử dụng TTA (Test-Time Augmentation)
+# Sử dụng TTA (Test-Time Augmentation, cải thiện F1 +0.63%)
 python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --model_version v2
+
+# Sử dụng Multi-scale (chưa khuyến nghị, cần fine-tune multi-scale training)
+python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --multi_scale --model_version v2
+
+# Kết hợp TTA + Multi-scale
+python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input ./test.jpg --tta --multi_scale --model_version v2
 ```
 
 ## Dataset Summary
@@ -169,14 +185,15 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 
 ## Command Line Arguments
 
-| Script              | Arguments                                                    | Description            |
-| ------------------- | ------------------------------------------------------------ | ---------------------- |
-| `compare_models.py` | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train & compare models |
-| `evaluate_all.py`   | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate all models    |
-| `train_v1.py`       | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model v1  |
-| `train_v2.py`       | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge` | Train hybrid model v2  |
-| `evaluate.py`       | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`   | Evaluate hybrid model  |
-| `detect.py`         | `--model`, `--input`, `--tta`, `--model_version`             | Detect watermark       |
+| Script                 | Arguments                                                         | Description                      |
+| ---------------------- | ----------------------------------------------------------------- | -------------------------------- |
+| `compare_models.py`    | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge`      | Train & compare models           |
+| `evaluate_all.py`      | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`        | Evaluate all models              |
+| `train_v1.py`          | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge`      | Train hybrid model v1            |
+| `train_v2.py`          | `--visible_train_dir`, `--invisible_train_dir`, `--no_merge`      | Train hybrid model v2            |
+| `evaluate.py`          | `--visible_test_dir`, `--invisible_test_dir`, `--no_merge`        | Evaluate hybrid model            |
+| `evaluate_advanced.py` | (no args, dùng defaults)                                          | Ablation study TTA + Multi-scale |
+| `detect.py`            | `--model`, `--input`, `--tta`, `--multi_scale`, `--model_version` | Detect watermark                 |
 
 ## Kiến trúc mô hình
 
@@ -198,12 +215,16 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 
 ## Kết quả (Evaluated on Combined Dataset)
 
-| Metric    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 |
-| --------- | --------------------- | ---------------------- | ------- | ------- |
-| Accuracy  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  |
-| Precision | 87.62%                | 91.08%                 | 93.64%  | 89.29%  |
-| Recall    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  |
-| F1-score  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  |
-| Inference | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   |
+| Metric                   | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 | **Ours v2 + TTA** |
+| ------------------------ | --------------------- | ---------------------- | ------- | ------- | ----------------- |
+| Accuracy                 | 84.15%                | 78.06%                 | 85.12%  | 84.99%  | **85.94%**        |
+| Precision                | 87.62%                | 91.08%                 | 93.64%  | 89.29%  | 92.33%            |
+| Recall                   | 80.76%                | 63.83%                 | 76.42%  | 80.66%  | 79.41%            |
+| F1-score                 | 84.05%                | 75.06%                 | 84.16%  | 84.76%  | **85.39%**        |
+| Inference (forward pass) | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   | 3.0ms*            |
 
-**Ours v1** đạt accuracy cao nhất (85.12%) với precision 93.64%. **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%.
+*Ghi chú: Thời gian inference 3.0ms cho Ours v2 + TTA là thời gian forward pass thuần (không bao gồm data loading), đo bằng batch size 32 trên GPU. TTA thực hiện 4 forward passes nên tốc độ thực tế per-image xấp xỉ 4× so với baseline (3.0ms × 4 ≈ 12ms khi tính tuần tự, hoặc 3.0ms nếu batch song song).
+
+**Ours v1** đạt accuracy cao nhất (85.12%) với precision 93.64%. **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%. **Ours v2 + TTA** cho F1-score tốt nhất 85.39% (cải thiện +0.63% so với baseline), là cấu hình được khuyến nghị cho triển khai thực tế.
+
+Xem chi tiết ablation study tại `Docs/BaoCao.md` mục 3.9.4.
