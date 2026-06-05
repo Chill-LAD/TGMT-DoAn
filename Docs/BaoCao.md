@@ -205,7 +205,7 @@ Input Image
 ┌─────────────────────┐
 │  Feature Extraction │
 │  Backbone: ResNet18 │ ── RGB features
-│  FreqBranch: 1D CNN │ ── Frequency features
+│  FreqBranch: 2D CNN │ ── Frequency features
 │  Fusion: Concat     │ ── Multi-scale fusion
 └─────────────────────┘
     │
@@ -273,14 +273,16 @@ Output: 512-dimensional feature vector
 
 #### 3.3.2. Frequency Branch
 
-Nhánh tần số sử dụng 1D CNN với 3 layers để trích xuất đặc trưng từ frequency representation (input shape: 224 length × 3 channels, sau khi repeat từ grayscale FFT 1 channel):
+Nhánh tần số sử dụng 2D CNN với 3 layers để trích xuất đặc trưng từ frequency representation (input shape: 224 × 224 × 3 channels, từ FFT 1 channel được repeat thành 3 channels để tận dụng pretrained filter patterns ở layer đầu):
 
-| Layer         | Kernel Size | Stride | Channels | Output (length × channels) |
-| ------------- | ----------- | ------ | -------- | -------------------------- |
-| Conv1d_1      | 3           | 2      | 32       | 112 × 32                   |
-| Conv1d_2      | 3           | 2      | 64       | 56 × 64                    |
-| Conv1d_3      | 3           | 2      | 128      | 28 × 128                   |
-| GlobalAvgPool | -           | -      | -        | 128                        |
+| Layer         | Kernel | Padding | Channels | Output trước pool (H × W × C) | Pool sau layer      |
+| ------------- | ------ | ------- | -------- | ----------------------------- | ------------------- |
+| Conv2d_1      | 3×3    | 1       | 32       | 224 × 224 × 32                | MaxPool 2×2         |
+| Conv2d_2      | 3×3    | 1       | 64       | 112 × 112 × 64                | MaxPool 2×2         |
+| Conv2d_3      | 3×3    | 1       | 128      | 56 × 56 × 128                 | AdaptiveAvgPool 1×1 |
+| GlobalAvgPool | -      | -       | -        | 1 × 1 × 128                   | -                   |
+
+
 
 Output: 128-dimensional feature vector
 
@@ -520,7 +522,7 @@ Bảng 4 dưới đây trình bày các phương pháp watermarking (nhúng và 
 
 **Điểm mạnh của mô hình đề xuất:**
 
-1. **Dual-branch architecture:** Kết hợp đặc trưng không gian (ResNet18) và tần số (FFT + 1D CNN) trong một pipeline thống nhất, cho phép phát hiện cả visible và invisible watermark.
+1. **Dual-branch architecture:** Kết hợp đặc trưng không gian (ResNet18) và tần số (FFT + 2D CNN) trong một pipeline thống nhất, cho phép phát hiện cả visible và invisible watermark.
 
 2. **Nhẹ và nhanh:** Với ~12M parameters, inference time chỉ 6.1-7.3ms trên GPU RTX 3060, phù hợp cho ứng dụng thực tế.
 
@@ -548,7 +550,7 @@ Dựa trên phân tích trên, các hướng phát triển tiếp theo bao gồm
 
 ## VI. KẾT LUẬN (CONCLUSION)
 
-Trong bài báo này, chúng tôi đã đề xuất một mô hình hybrid kết hợp CNN với phân tích miền tần số để phát hiện watermark trong ảnh số. Mô hình sử dụng kiến trúc hai nhánh với ResNet18 cho đặc trưng không gian và 1D CNN cho đặc trưng tần số, kết hợp với cơ chế SE-Net attention.
+Trong bài báo này, chúng tôi đã đề xuất một mô hình hybrid kết hợp CNN với phân tích miền tần số để phát hiện watermark trong ảnh số. Mô hình sử dụng kiến trúc hai nhánh với ResNet18 cho đặc trưng không gian và 2D CNN cho đặc trưng tần số, kết hợp với cơ chế SE-Net attention.
 
 Các đóng góp chính:
 
