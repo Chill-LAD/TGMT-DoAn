@@ -13,7 +13,7 @@
 
 ## I. TÓM TẮT (ABSTRACT)
 
-Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên tập dữ liệu kết hợp CLWD và COCO cho thấy mô hình đạt F1-score 84.76% (Ours v2) và 85.39% khi áp dụng Test-Time Augmentation, với thời gian xử lý dưới 10ms/ảnh trên GPU.
+Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên tập dữ liệu kết hợp CLWD và COCO cho thấy mô hình đạt F1-score 84.76% (Ours v2) và 85.39% khi áp dụng Test-Time Augmentation, với thời gian xử lý 7.3ms/ảnh (non-TTA) hoặc ~29.2ms/ảnh (TTA) trên GPU.
 
 ---
 
@@ -252,8 +252,6 @@ Quy trình tạo frequency representation:
 5. Lấy magnitude spectrum
 6. Log transform: log(magnitude + 1) để compress dynamic range
 7. Normalize về [0, 1] bằng min-max scaling
-
-
 
 ### 3.3. Trích xuất đặc trưng (Feature Extraction)
 
