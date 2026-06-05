@@ -234,4 +234,4 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 
 **Ours v1** đạt accuracy cao nhất (85.12%) với precision 93.64%. **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%. **Ours v2 + TTA** cho F1-score tốt nhất 85.39% (cải thiện +0.63% so với baseline), là cấu hình được khuyến nghị cho triển khai thực tế.
 
-Xem chi tiết ablation study tại `Docs/BaoCao.md` mục 3.9.4.
+Xem chi tiết ablation study tại `Docs/BaoCao.pdf` mục 3.9.4.
