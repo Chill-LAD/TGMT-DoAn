@@ -106,12 +106,17 @@ python train_v1.py --epochs 30
 # Train Ours v2 (có SE Attention)
 python train_v2.py --epochs 30
 
-# Train tất cả models bằng compare_models.py
+# Train tất cả 4 models bằng compare_models.py (resnet18, mobilenet, ours_v1, ours_v2)
 python compare_models.py --epochs 30
 
 # Train một model cụ thể
+python compare_models.py --train_single resnet18 --epochs 30
+python compare_models.py --train_single mobilenet --epochs 30
 python compare_models.py --train_single ours_v1 --epochs 30
 python compare_models.py --train_single ours_v2 --epochs 30
+
+# Train một tập models con
+python compare_models.py --models resnet18 mobilenet --epochs 30
 ```
 
 ### Train trên Visible Only
@@ -126,13 +131,15 @@ python train_v2.py --no_merge
 ### Evaluate All Models
 
 ```bash
-# Evaluate tất cả models trên combined dataset
+# Evaluate tất cả 4 models trên combined dataset (resnet18, mobilenet, ours_v1, ours_v2)
 python evaluate_all.py
 
 # Evaluate trên visible only
 python evaluate_all.py --no_merge
 
-# Evaluate từng model
+# Evaluate từng model cụ thể
+python evaluate_all.py --model resnet18
+python evaluate_all.py --model mobilenet
 python evaluate_all.py --model ours_v1
 python evaluate_all.py --model ours_v2
 ```
