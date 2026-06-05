@@ -245,13 +245,15 @@ Trong đó:
 
 Quy trình tạo frequency representation:
 
-1. Chuyển ảnh sang grayscale (nếu cần)
-2. Áp dụng FFT 2D
-3. Shift để đưa DC component ra giữa
-4. Lấy magnitude spectrum
-5. Log transform: log(magnitude + 1)
-6. Normalize về [0, 1]
-7. Resize về 224×224
+1. Chuyển ảnh sang grayscale (nếu ảnh RGB)
+2. Resize về 224×224
+3. Áp dụng FFT 2D
+4. Shift để đưa DC component ra giữa
+5. Lấy magnitude spectrum
+6. Log transform: log(magnitude + 1) để compress dynamic range
+7. Normalize về [0, 1] bằng min-max scaling
+
+
 
 ### 3.3. Trích xuất đặc trưng (Feature Extraction)
 
