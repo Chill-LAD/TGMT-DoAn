@@ -13,7 +13,7 @@
 
 ## I. TÓM TẮT (ABSTRACT)
 
-Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên tập dữ liệu kết hợp CLWD và COCO cho thấy mô hình đạt F1-score 84.76% với thời gian xử lý dưới 10ms/ảnh trên GPU.
+Nghiên cứu này đề xuất một mô hình lai (hybrid) kết hợp mạng nơ-ron tích chập (CNN) với phân tích miền tần số để phát hiện watermark trong ảnh số. Bài toán phát hiện watermark đóng vai trò quan trọng trong việc bảo vệ bản quyền và xác thực nguồn gốc nội dung số. Mô hình đề xuất sử dụng kiến trúc hai nhánh: nhánh RGB sử dụng ResNet18 để trích xuất đặc trưng không gian, và nhánh tần số sử dụng FFT để nắm bắt các thay đổi vi mô trong miền tần số. Kết quả thực nghiệm trên tập dữ liệu kết hợp CLWD và COCO cho thấy mô hình đạt F1-score 84.76% (Ours v2) và 85.39% khi áp dụng Test-Time Augmentation, với thời gian xử lý dưới 10ms/ảnh trên GPU.
 
 ---
 
@@ -57,7 +57,7 @@ Trong bài báo này, chúng tôi đề xuất một mô hình hybrid kết hợ
 
 ### 1.5. Cấu trúc bài báo
 
-Phần còn lại của bài báo được tổ chức như sau: Phần II trình bày các nghiên cứu liên quan. Phần III mô tả chi tiết mô hình đề xuất. Phần IV trình bày thực nghiệm và kết quả đánh giá. Phần V là kết luận và hướng phát triển tương lai.
+Phần còn lại của bài báo được tổ chức như sau: Phần III trình bày các nghiên cứu liên quan. Phần IV mô tả chi tiết mô hình đề xuất. Phần V trình bày thực nghiệm và kết quả đánh giá. Phần VI là kết luận và hướng phát triển tương lai.
 
 ---
 
@@ -142,9 +142,9 @@ Các mô hình kết hợp FFT/DCT với CNN để cải thiện khả năng ph�
 
 ### 2.4. Các nghiên cứu gần đây (2024-2026)
 
-#### 2.4.1. FSNet - Frequency Shield Network (arXiv 2603.06723, 2026)
+#### 2.4.1. FSNet / AWPD - Frequency Shield Network (arXiv 2603.06723, 2026)
 
-FSNet đề xuất Adaptive Spectral Perception Module (ASPM) để phát hiện invisible watermark trong miền tần số. ASPM sử dụng learnable frequency gating để amplify high-frequency watermark signals và suppress low-frequency semantics. FSNet đạt zero-shot detection vượt trội trên tập dữ liệu UniFreq-100K.
+FSNet (còn gọi là AWPD - Agnostic Watermark Presence Detection) đề xuất Adaptive Spectral Perception Module (ASPM) để phát hiện invisible watermark trong miền tần số. ASPM sử dụng learnable frequency gating để amplify high-frequency watermark signals và suppress low-frequency semantics. FSNet đạt zero-shot detection vượt trội trên tập dữ liệu UniFreq-100K.
 
 Công thức ASPM:
 $F_{stem} = \Phi_{ASPM}(X) = G_\theta(X) \cdot X$
@@ -158,10 +158,6 @@ InvisMark giới thiệu encoder-decoder cho AI-generated images, tập trung v�
 #### 2.4.3. WAM - Watermark Anything Model (arXiv 2411.07231, ICLR 2025)
 
 WAM phát hiện và định vị watermark trong vùng cục bộ (localized), cho phép granular detection.
-
-#### 2.4.4. FreqMark (arXiv 2511.14489, 2025)
-
-FreqMark sử dụng latent frequency space của VAE để embed watermark, kết hợp ưu điểm của frequency domain và latent space.
 
 #### 2.4.5. DFCL (Neural Networks 184, 2025)
 
@@ -277,14 +273,14 @@ Output: 512-dimensional feature vector
 
 #### 3.3.2. Frequency Branch
 
-Nhánh tần số sử dụng 1D CNN với 3 layers để trích xuất đặc trưng từ frequency representation:
+Nhánh tần số sử dụng 1D CNN với 3 layers để trích xuất đặc trưng từ frequency representation (input shape: 224 length × 3 channels, sau khi repeat từ grayscale FFT 1 channel):
 
-| Layer         | Kernel Size | Channels | Output |
-| ------------- | ----------- | -------- | ------ |
-| Conv1d_1      | 3           | 32       | 224×32 |
-| Conv1d_2      | 3           | 64       | 112×64 |
-| Conv1d_3      | 3           | 128      | 56×128 |
-| GlobalAvgPool | -           | -        | 128    |
+| Layer         | Kernel Size | Stride | Channels | Output (length × channels) |
+| ------------- | ----------- | ------ | -------- | -------------------------- |
+| Conv1d_1      | 3           | 2      | 32       | 112 × 32                   |
+| Conv1d_2      | 3           | 2      | 64       | 56 × 64                    |
+| Conv1d_3      | 3           | 2      | 128      | 28 × 128                   |
+| GlobalAvgPool | -           | -      | -        | 128                        |
 
 Output: 128-dimensional feature vector
 
@@ -353,19 +349,25 @@ Trong đó $\eta_t$ là learning rate tại step t, $T_{max}$ là tổng số ep
 
 ### 3.8. Data Augmentation
 
-Để tăng cường khả năng tổng quát hóa, chúng tôi áp dụng các kỹ thuật augmentation:
+Để tăng cường khả năng tổng quát hóa, chúng tôi áp dụng các kỹ thuật augmentation. Pipeline được triển khai trong `Source/dual_dataset.py` gồm hai giai đoạn:
 
-| Kỹ thuật               | Tham số                      | Xác suất |
-| ---------------------- | ---------------------------- | -------- |
-| Random Horizontal Flip | -                            | 0.5      |
-| Random Rotation        | ±15°                         | 0.5      |
-| Color Jitter           | brightness=0.2, contrast=0.2 | 0.3      |
-| JPEG Compression       | quality=70-90                | 0.3      |
-| Gaussian Noise         | σ=5                          | 0.2      |
+**Giai đoạn 1** (numpy/cv2, `_augment()`): áp dụng flip, JPEG, noise trước khi convert sang PIL.
+
+**Giai đoạn 2** (torchvision, `_get_transform()`): áp dụng flip, rotation, color jitter, ToTensor, Normalize.
+
+| Kỹ thuật               | Tham số                      | Xác suất      | Giai đoạn |
+| ---------------------- | ---------------------------- | ------------- | --------- |
+| Random Horizontal Flip | -                            | 0.5           | 1 + 2     |
+| Random Rotation        | ±15°                         | 0.5           | 2         |
+| Color Jitter           | brightness=0.2, contrast=0.2 | luôn áp dụng* | 2         |
+| JPEG Compression       | quality=70-90                | 0.3           | 1         |
+| Gaussian Noise         | σ=5-15                       | 0.2           | 1         |
+
+*Ghi chú: `transforms.ColorJitter` không hỗ trợ tham số `p`, nên mỗi ảnh training đều được áp dụng brightness/contrast jitter (không có bước skip với xác suất 0.3 như các augmentation khác).
 
 ### 3.9. Cải tiến nâng cao (Advanced Improvements)
 
-Ngoài kiến trúc hybrid chính, nhóm triển khai ba cải tiến inference nhằm cải thiện độ robust của hệ thống khi triển khai thực tế: Test-Time Augmentation (TTA), Multi-scale Inference, và Semi-supervised Learning (hướng phát triển tương lai).
+Ngoài kiến trúc hybrid chính, nhóm triển khai hai cải tiến inference (TTA, Multi-scale) và đề xuất hướng phát triển tương lai Semi-supervised Learning, nhằm cải thiện độ robust của hệ thống khi triển khai thực tế. Kết quả thực nghiệm ablation được trình bày tại mục 3.9.4.
 
 #### 3.9.1. Test-Time Augmentation (TTA)
 
@@ -388,7 +390,7 @@ Ngoài kiến trúc hybrid chính, nhóm triển khai ba cải tiến inference 
 
 **Mục đích:** Mô hình được huấn luyện ở độ phân giải cố định 224×224. Tuy nhiên watermark có thể xuất hiện ở nhiều kích thước khác nhau, từ watermark nhỏ chỉ chiếm vài pixel đến watermark lớn phủ toàn bộ ảnh. Multi-scale inference giúp mô hình "nhìn" watermark ở các mức chi tiết khác nhau.
 
-**Chiến lược:** Inference ở hai scale 224 và 448, lấy trung bình xác suất dự đoán. Lưu ý: do mô hình được train ở 224, scale 448 chỉ mang tính chất thăm dò (exploratory) và được kỳ vọng cải thiện recall nhưng có thể giảm precision vì mô hình chưa thấy kích thước này trong training. Kết quả thực nghiệm được trình bày tại Bảng 2 cho thấy multi-scale đơn lẻ làm giảm F1, do đó tổ hợp TTA+MS cũng giảm F1 (xem phân tích tại mục 3.9.4).
+**Chiến lược:** Inference ở hai scale 224 và 448, lấy trung bình xác suất dự đoán. Lưu ý: do mô hình được train ở 224, scale 448 chỉ mang tính chất thăm dò (exploratory) và được kỳ vọng cải thiện recall nhưng có thể giảm precision vì mô hình chưa thấy kích thước này trong training. Kết quả thực nghiệm chi tiết được trình bày tại mục 3.9.4 (Bảng 2).
 
 **Cài đặt:** Triển khai trong `Source/detect.py` với cờ `--multi_scale`. Resize 224→448 sử dụng bilinear interpolation.
 
@@ -436,10 +438,11 @@ Nhóm thực hiện ablation study trên tập test (21.750 mẫu) với mô hì
 
 #### 4.1.1. Tập dữ liệu sử dụng
 
-| Dataset              | Nguồn            | Số lượng | Loại WM   |
-| -------------------- | ---------------- | -------- | --------- |
-| CLWD                 | arXiv 2012.07616 | ~70,000  | Visible   |
-| COCO val + synthetic | COCO 2017        | ~5,000   | Invisible |
+| Dataset              | Nguồn            | Số lượng (Watermark) | Số lượng (No-WM) | Tổng        | Loại WM   |
+| -------------------- | ---------------- | -------------------- | ---------------- | ----------- | --------- |
+| CLWD                 | arXiv 2012.07616 | 70,000               | 70,000           | 140,000     | Visible   |
+| COCO val + synthetic | COCO 2017        | 5,000                | 0                | 5,000       | Invisible |
+| **Combined**         | -                | **75,000**           | **70,000**       | **145,000** | Cả hai    |
 
 #### 4.1.2. Chia train/val/test
 
@@ -457,17 +460,7 @@ Nhóm thực hiện ablation study trên tập test (21.750 mẫu) với mô hì
 | F1-score       | 2PR/(P+R)     | Cân bằng P/R         |
 | Inference time | ms/ảnh        | Tốc độ               |
 
-### 4.3. Điều kiện test
-
-| Điều kiện        | Mô tả              |
-| ---------------- | ------------------ |
-| Clean            | Không distortion   |
-| JPEG compression | Quality 70, 80, 90 |
-| Resize           | 0.5x, 0.75x, 1.5x  |
-| Noise            | Gaussian (σ=5, 10) |
-| Mixed            | Kết hợp distortion |
-
-### 4.4. Môi trường thực nghiệm
+### 4.3. Môi trường thực nghiệm
 
 | Thành phần | Phiên bản       |
 | ---------- | --------------- |
@@ -477,27 +470,32 @@ Nhóm thực hiện ablation study trên tập test (21.750 mẫu) với mô hì
 | CUDA       | 11.8+           |
 | GPU        | RTX 3060+ (8GB) |
 
-### 4.5. Kết quả
+### 4.4. Kết quả
 
-| Metric    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 | **Ours v2 + TTA** |
-| --------- | --------------------- | ---------------------- | ------- | ------- | ----------------- |
-| Accuracy  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  | **85.94%**        |
-| Precision | 87.62%                | 91.08%                 | 93.64%  | 89.29%  | 92.33%            |
-| Recall    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  | 79.41%            |
-| F1-score  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  | **85.39%**        |
-| Inference | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   | 3.0ms             |
+| Metric                    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 | **Ours v2 + TTA** |
+| ------------------------- | --------------------- | ---------------------- | ------- | ------- | ----------------- |
+| Accuracy                  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  | **85.94%**        |
+| Precision                 | 87.62%                | 91.08%                 | 93.64%  | 89.29%  | 92.33%            |
+| Recall                    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  | 79.41%            |
+| F1-score                  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  | **85.39%**        |
+| Inference (full pipeline) | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   | ~29.2ms*          |
 
-**Nhận xét:** Mô hình Ours v1 đạt accuracy cao nhất (85.12%) với precision 93.64%. Ours v2 cân bằng hơn với F1-score 84.76% và recall 80.66%, cho thấy SE attention giúp cải thiện khả năng phát hiện watermark thực sự (recall cao hơn). Mô hình hybrid CNN-Frequency cải thiện đáng kể so với baseline ResNet18 (+1% accuracy). Cấu hình **Ours v2 + TTA** cho F1-score tốt nhất 85.39%, cải thiện +0.63% so với baseline inference. Chi tiết ablation study được trình bày tại mục 3.9.4.
+*Ghi chú về inference time:*
+
+- *4 cột đầu (4.9/7.8/6.1/7.3ms): đo bằng full pipeline (data loading + forward pass) trên GPU RTX 3060, batch size 32.*
+- *Cột **Ours v2 + TTA = ~29.2ms**: ước lượng = 7.3ms × 4 forward passes (TTA ensemble: original + flip + rotate±10°). Đây là ước lượng dựa trên việc TTA thực hiện 4 lần forward pass cho cùng một ảnh. Kết quả đo chi tiết forward-pass-only bằng `evaluate_advanced.py` được trình bày tại mục 3.9.4 (Bảng 2: 3.0ms per-image ở batch 32, thấp hơn nhiều so với ước lượng tuần tự nhờ song song hóa batch).*
+
+**Nhận xét:** Trong số các mô hình không áp dụng TTA, **Ours v1 đạt accuracy cao nhất (85.12%)** với precision 93.64% (cũng cao nhất bảng). Khi áp dụng TTA, cấu hình **Ours v2 + TTA** đạt accuracy tổng thể cao nhất 85.94% và F1-score tốt nhất 85.39%. Ours v2 cân bằng hơn với F1-score 84.76% và recall 80.66%, cho thấy SE attention giúp cải thiện khả năng phát hiện watermark thực sự (recall tăng từ 76.42% ở v1 lên 80.66% ở v2). Mô hình hybrid CNN-Frequency cải thiện đáng kể so với baseline ResNet18 (+0.97% accuracy với Ours v1, +0.84% với Ours v2). So với Ours v2 không TTA, TTA cải thiện thêm +0.95% accuracy và +0.63% F1-score. Chi tiết ablation study được trình bày tại mục 3.9.4.
 
 ---
 
-## 4.6. So sánh với các nghiên cứu liên quan
+### 4.5. So sánh với các nghiên cứu liên quan
 
-### 4.6.1. Tổng quan về các nghiên cứu liên quan
+### 4.5.1. Tổng quan về các nghiên cứu liên quan
 
 Các nghiên cứu liên quan gần đây trong lĩnh vực phát hiện và nhúng watermark bao gồm FSNet (arXiv 2603.06723, 2026), WAM (ICLR 2025), và InvisMark (WACV 2025). FSNet là phương pháp detection với zero-shot capability trên UniFreq-100K, trong khi WAM và InvisMark là các phương pháp watermarking (nhúng và trích xuất thông điệp).
 
-### 4.6.2. So sánh các phương pháp Detection
+### 4.5.2. So sánh các phương pháp Detection
 
 Bảng 3 dưới đây so sánh các phương pháp detection (phân loại nhị phân: có watermark / không có watermark).
 
@@ -509,7 +507,7 @@ Bảng 3 dưới đây so sánh các phương pháp detection (phân loại nh�
 
 **Ghi chú:** FSNet được đánh giá trên UniFreq-100K với leave-one-algorithm-out cross-validation (zero-shot). Kết quả F1 biến thiên từ 0.26 (LSB/Patchwork) đến 0.99 (HiDDeN) tùy thuật toán nhúng. Mô hình của nhóm được huấn luyện và đánh giá trên dataset kết hợp visible (CLWD) + invisible (COCO), với F1-score trung bình 0.84-0.85. Do sự khác biệt về dataset và task formulation (zero-shot vs supervised), không thể so sánh trực tiếp các chỉ số.
 
-### 4.6.3. So sánh các phương pháp Watermarking (tham khảo)
+### 4.5.3. So sánh các phương pháp Watermarking (tham khảo)
 
 Bảng 4 dưới đây trình bày các phương pháp watermarking (nhúng và trích xuất thông điệp) để tham khảo. Các phương pháp này không phải task detection nên không thể so sánh F1-score trực tiếp.
 
@@ -518,7 +516,7 @@ Bảng 4 dưới đây trình bày các phương pháp watermarking (nhúng và 
 | WAM         | Localized watermarking | Bit error    | <1 bit (32-bit msg) | ICLR 2025; có khả năng localization |
 | InvisMark   | AI-image watermarking  | Bit accuracy | 97%                 | WACV 2025; 256-bit payload, PSNR~51 |
 
-### 4.6.4. Phân tích định tính
+### 4.5.4. Phân tích định tính
 
 **Điểm mạnh của mô hình đề xuất:**
 
@@ -536,7 +534,7 @@ Bảng 4 dưới đây trình bày các phương pháp watermarking (nhúng và 
 
 3. **Dataset nhỏ hơn:** UniFreq-100K có ~100K samples cho invisible watermark, trong khi invisible dataset của nhóm chỉ có 5,000 samples.
 
-### 4.6.5. Hướng cải tiến tương lai
+### 4.5.5. Hướng cải tiến tương lai
 
 Dựa trên phân tích trên, các hướng phát triển tiếp theo bao gồm:
 
@@ -546,7 +544,7 @@ Dựa trên phân tích trên, các hướng phát triển tiếp theo bao gồm
 
 3. **Mở rộng dataset:** Thu thập thêm invisible watermark samples hoặc test trên UniFreq-100K để so sánh trực tiếp với FSNet.
 
-4. **Ensemble multi-scale:** Train và ensemble predictions từ input 224×224 và 448×448 để cải thiện robustness.
+4. **Multi-scale Training:** Huấn luyện ở nhiều resolution (224/256/320) để mô hình generalize tốt hơn, giúp multi-scale inference đạt hiệu quả (hiện tại multi-scale inference bị giảm F1 do mô hình chỉ thấy 224 trong training).
 
 ## VI. KẾT LUẬN (CONCLUSION)
 
@@ -582,4 +580,5 @@ Hướng phát triển tương lai:
 [4] S. K. Padhi et al., "Deep Learning-based Dual Watermarking for Image Copyright Protection and Authentication," arXiv:2502.18501, IEEE TAI 2025.
 
 [5] B. Meng et al., "DFCL: Dual-Pathway Fusion Contrastive Learning for Blind Single-Image Visible Watermark Removal," Neural Networks 184, 2025. https://doi.org/10.1016/j.neunet.2024.107077
+
 [6] F. Xie et al., "SpecGuard: Spectral Projection-based Advanced Invisible Watermarking," arXiv:2510.07302, ICCV 2025.
