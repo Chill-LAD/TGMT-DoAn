@@ -207,7 +207,7 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 ### Ours v1 (model_v1.py)
 
 - RGB Backbone: ResNet18 (ImageNet pretrained, 512 dim output)
-- Frequency Branch: FFT → Log → CNN (32→64→128) → 128 dim
+- Frequency Branch: FFT → Log → 2D CNN (Conv2d 3→32→64→128, kernel 3×3 + MaxPool 2×2) → 128 dim
 - Fusion: Concat(512+128=640) → FC(640→512)
 - Classification: Dropout(0.5) → FC(512→256) → ReLU → Dropout(0.5) → FC(256→2)
 - KHÔNG có SE Attention
@@ -215,23 +215,26 @@ python detect.py --model ./checkpoints/ours_v2_combined/best_model.pth --input .
 ### Ours v2 (model_v2.py)
 
 - RGB Backbone: ResNet18 (ImageNet pretrained, 512 dim output)
-- Frequency Branch: FFT → Log → CNN (32→64→128) → 128 dim
+- Frequency Branch: FFT → Log → 2D CNN (Conv2d 3→32→64→128, kernel 3×3 + MaxPool 2×2) → 128 dim
 - Fusion: Concat(512+128=640) → FC(640→512)
 - Attention: SE-Net (reduction=16)
 - Classification: Dropout(0.5) → FC(512→256) → ReLU → Dropout(0.5) → FC(256→2)
 
 ## Kết quả (Evaluated on Combined Dataset)
 
-| Metric                   | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 | **Ours v2 + TTA** |
-| ------------------------ | --------------------- | ---------------------- | ------- | ------- | ----------------- |
-| Accuracy                 | 84.15%                | 78.06%                 | 85.12%  | 84.99%  | **85.94%**        |
-| Precision                | 87.62%                | 91.08%                 | 93.64%  | 89.29%  | 92.33%            |
-| Recall                   | 80.76%                | 63.83%                 | 76.42%  | 80.66%  | 79.41%            |
-| F1-score                 | 84.05%                | 75.06%                 | 84.16%  | 84.76%  | **85.39%**        |
-| Inference (forward pass) | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   | 3.0ms*            |
+| Metric                    | Baseline 1 (ResNet18) | Baseline 2 (MobileNet) | Ours v1 | Ours v2 | **Ours v2 + TTA** |
+| ------------------------- | --------------------- | ---------------------- | ------- | ------- | ----------------- |
+| Accuracy                  | 84.15%                | 78.06%                 | 85.12%  | 84.99%  | **85.94%**        |
+| Precision                 | 87.62%                | 91.08%                 | 93.64%  | 89.29%  | 92.33%            |
+| Recall                    | 80.76%                | 63.83%                 | 76.42%  | 80.66%  | 79.41%            |
+| F1-score                  | 84.05%                | 75.06%                 | 84.16%  | 84.76%  | **85.39%**        |
+| Inference (full pipeline) | 4.9ms                 | 7.8ms                  | 6.1ms   | 7.3ms   | ~29.2ms*          |
 
-*Ghi chú: Thời gian inference 3.0ms cho Ours v2 + TTA là thời gian forward pass thuần (không bao gồm data loading), đo bằng batch size 32 trên GPU. TTA thực hiện 4 forward passes nên tốc độ thực tế per-image xấp xỉ 4× so với baseline (3.0ms × 4 ≈ 12ms khi tính tuần tự, hoặc 3.0ms nếu batch song song).
+*Ghi chú về inference time:*
 
-**Ours v1** đạt accuracy cao nhất (85.12%) với precision 93.64%. **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%. **Ours v2 + TTA** cho F1-score tốt nhất 85.39% (cải thiện +0.63% so với baseline), là cấu hình được khuyến nghị cho triển khai thực tế.
+- *4 cột đầu (4.9/7.8/6.1/7.3ms): đo bằng full pipeline (data loading + forward pass) trên GPU RTX 3060, batch size 32.*
+- *Cột **Ours v2 + TTA = ~29.2ms**: ước lượng = 7.3ms × 4 forward passes (TTA ensemble: original + flip + rotate±10°). Kết quả đo chi tiết forward-pass-only bằng `evaluate_advanced.py` được trình bày tại mục 3.9.4 (Bảng 2: 3.0ms per-image ở batch 32, thấp hơn nhiều so với ước lượng tuần tự nhờ song song hóa batch).*
+
+**Ours v1** đạt accuracy cao nhất trong số các mô hình không áp dụng TTA (85.12%) với precision 93.64% (cũng cao nhất bảng). **Ours v2** cân bằng hơn với F1-score 84.76% và recall 80.66%. **Ours v2 + TTA** cho F1-score tốt nhất 85.39% (cải thiện +0.63% F1 so với Ours v2 không TTA, từ 84.76% lên 85.39%) và accuracy tổng thể cao nhất 85.94%, là cấu hình được khuyến nghị cho triển khai thực tế.
 
 Xem chi tiết ablation study tại `Docs/BaoCao.pdf` mục 3.9.4.
